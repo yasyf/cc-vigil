@@ -59,6 +59,9 @@ final class DaemonClient {
     private func receive(_ payload: Data, generation received: UInt64) {
         guard received == generation, connection != nil else { return }
         backoff.reset()
+        // An empty snapshot means the daemon has nothing published yet; the
+        // subscribe reply still fired, and real status arrives on later pushes.
+        guard !payload.isEmpty else { return }
         do {
             let report = try WireCodec.decodePayload(StatusReport.self, from: payload)
             onEvent(.statusUpdated(report))

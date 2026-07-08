@@ -1,3 +1,4 @@
+import CCVigilDaemonKit
 import CCVigilShared
 import Foundation
 import os
@@ -33,12 +34,14 @@ final class AppXPCService: NSObject, AppXPCProtocol, @unchecked Sendable {
     }
 
     func subscribe(reply: @escaping @Sendable (Data) -> Void) {
-        guard let connection = NSXPCConnection.current() else { return }
+        guard let connection = NSXPCConnection.current() else {
+            AppStatusSubscription.deliver(snapshot: nil, reply: reply)
+            return
+        }
         broadcaster.add(connection)
         let statusProvider = statusProvider
         Task {
-            guard let snapshot = await statusProvider() else { return }
-            reply(snapshot)
+            await AppStatusSubscription.deliver(snapshot: statusProvider(), reply: reply)
         }
     }
 }
