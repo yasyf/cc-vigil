@@ -1,0 +1,14 @@
+{
+  "originHash" : "b4c20d0912016225c0ab9ca4c78b07f72b9f8cbb312e3dabb2aa4960ed5a4f67",
+  "pins" : [
+    {
+      "identity" : "cc-transcript",
+      "kind" : "remoteSourceControl",
+      "location" : "https://github.com/yasyf/cc-transcript.git",
+      "state" : {
+        "revision" : "efd4594df05e0dd9963601e1ac98789b49db005b"
+      }
+    }
+  ],
+  "version" : 3
+}

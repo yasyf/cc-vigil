@@ -12,14 +12,12 @@ options:
     macOS: "14.0"
   createIntermediateGroups: true
 
+# cc-transcript is pinned inside CCVigilShared/Package.swift (the
+# CCVigilDaemonKit target's dependency) so `swift test` and the Xcode build
+# share one pin; bump it there.
 packages:
   CCVigilShared:
     path: CCVigilShared
-  # Revision-pinned: cc-transcript ships no semver tags for the Swift package;
-  # bump by landing a new root-manifest commit there and updating this pin.
-  CCTranscript:
-    url: https://github.com/yasyf/cc-transcript.git
-    revision: efd4594df05e0dd9963601e1ac98789b49db005b
 
 settings:
   base:
@@ -105,7 +103,9 @@ targets:
         CREATE_INFOPLIST_SECTION_IN_BINARY: "YES"
     dependencies:
       - package: CCVigilShared
-      - package: CCTranscript
+        product: CCVigilShared
+      - package: CCVigilShared
+        product: CCVigilDaemonKit
 
   CCVigilHelper:
     # LaunchDaemon (system, root): privileged clamshell/power work lands here.
