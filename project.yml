@@ -143,11 +143,21 @@ targets:
     platform: macOS
     sources:
       - path: Sources/CLI
+    info:
+      # Embedded like the daemon's: `cc-vigil version` reads it at runtime.
+      path: Generated/CLI-Info.plist
+      properties:
+        CFBundleShortVersionString: $(MARKETING_VERSION)
+        CFBundleVersion: $(CURRENT_PROJECT_VERSION)
     settings:
       base:
         PRODUCT_BUNDLE_IDENTIFIER: dev.yasyf.cc-vigil.cli
+        CREATE_INFOPLIST_SECTION_IN_BINARY: "YES"
     dependencies:
       - package: CCVigilShared
+        product: CCVigilShared
+      - package: CCVigilShared
+        product: CCVigilCLIKit
 
 schemes:
   CCVigil:

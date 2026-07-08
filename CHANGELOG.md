@@ -59,5 +59,16 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   library (with the cc-transcript pin now in `CCVigilShared/Package.swift`)
   so oracle composition is exercised by `swift test` against fixture and
   real transcripts.
+- The `cc-vigil` CLI (swift-argument-parser, logic in the new CCVigilCLIKit
+  library): `nudge` reads hook JSON from stdin, resolves the nearest `claude`
+  ancestor pid, and fails open — one stderr warning, always exit 0; `status
+  [--json]` renders blocking/helper-connectivity/sessions-with-reasons/holds/
+  cutouts/pause (the status wire report now carries a `helper` link field);
+  `hold --for <duration> --reason <s>` / `release <key>`; `pause --for` /
+  `resume`; `log [-f]` tails `events.log` with rotation-aware follow; and
+  `install-hooks`/`uninstall-hooks` drive the tagged HookInstaller against
+  `~/.claude/settings.json` (`--settings` override), embedding the CLI's
+  symlink-resolved binary path. An integration test spawns the dry-run
+  daemon and proves the wire protocol end to end over `cli.sock`.
 
 [Unreleased]: https://github.com/yasyf/cc-vigil/commits/main
