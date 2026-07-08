@@ -2,9 +2,13 @@
 # `xcodegen generate` emits CCVigil.xcodeproj plus the Info.plists under
 # Generated/ — all gitignored. Modeled on claude-pool's widget/project.yml.
 #
-# Signing: ad-hoc (CODE_SIGN_IDENTITY "-") for local and CI builds. Release
-# signing (Developer ID, hardened runtime, the helper's SMAuthorizedClients
-# team pin) comes from the release pipeline's xcodebuild command line.
+# Signing: ad-hoc (CODE_SIGN_IDENTITY "-") for local and CI builds. The Release
+# config here pins the static, notarization-ready posture — hardened runtime, no
+# base-entitlement injection (so no get-task-allow), and a minimal per-target
+# entitlements file — plus the helper's SMAuthorizedClients team requirement.
+# Only the Developer ID identity (CODE_SIGN_IDENTITY) and the real Team ID
+# (DEVELOPMENT_TEAM, which the SMAuthorizedClients requirement interpolates) come
+# from the release pipeline's xcodebuild command line.
 name: CCVigil
 options:
   bundleIdPrefix: dev.yasyf
@@ -28,6 +32,24 @@ settings:
     PRODUCT_NAME: $(TARGET_NAME)
     CURRENT_PROJECT_VERSION: 1
     MARKETING_VERSION: 0.1.0
+    # cc-vigil is Apple-Silicon-only: the daemon links cc-transcript's Rust
+    # xcframework, which ships a macos-arm64 slice only. Pin arm64 so a plain
+    # `xcodebuild -configuration Release` builds and signs cleanly instead of
+    # attempting the universal arm64+x86_64 default and failing to link the
+    # x86_64 daemon slice.
+    ARCHS: arm64
+  configs:
+    # Release pins the notarization-ready signing posture for every target;
+    # xcodebuild signs the app and each embedded tool inside-out under it. Debug
+    # is left hardened-runtime-free (so it stays debuggable) with xcodebuild's
+    # default entitlement handling untouched.
+    Release:
+      ENABLE_HARDENED_RUNTIME: "YES"
+      # A plain `xcodebuild build` (not archive/-exportArchive) injects
+      # get-task-allow=YES even in Release, which notarization rejects on every
+      # Mach-O; disabling the base-entitlement injection drops it, leaving each
+      # target's own entitlements file as the only entitlement source.
+      CODE_SIGN_INJECT_BASE_ENTITLEMENTS: "NO"
 
 targets:
   CCVigil:
@@ -58,6 +80,13 @@ targets:
         CFBundleVersion: $(CURRENT_PROJECT_VERSION)
         LSUIElement: true # menu-bar app: no Dock icon, no app menu
         LSApplicationCategoryType: public.app-category.developer-tools
+    entitlements:
+      # Non-sandboxed Developer ID app: the MenuBarExtra, the SMAppService
+      # registrant, the read-only NSXPC status client, and spawning the same-team
+      # bundled CLI all run under the hardened runtime with zero entitlements.
+      # Granting none is the least-privilege posture.
+      path: Generated/App.entitlements
+      properties: {}
     settings:
       base:
         PRODUCT_BUNDLE_IDENTIFIER: dev.yasyf.cc-vigil
@@ -104,6 +133,12 @@ targets:
       properties:
         CFBundleShortVersionString: $(MARKETING_VERSION)
         CFBundleVersion: $(CURRENT_PROJECT_VERSION)
+    entitlements:
+      # LaunchAgent tool: reads transcripts and its own user's process/IOKit/SMC/
+      # battery state and talks XPC to the helper — none of which needs an
+      # entitlement under the hardened runtime.
+      path: Generated/Daemon.entitlements
+      properties: {}
     settings:
       base:
         PRODUCT_BUNDLE_IDENTIFIER: dev.yasyf.cc-vigil.daemon
@@ -133,6 +168,14 @@ targets:
         # Runtime enforcement is the helper's CallerVerifier either way.
         SMAuthorizedClients:
           - $(CC_VIGIL_AUTHORIZED_CLIENT)
+    entitlements:
+      # Root LaunchDaemon: an NSXPC listener that holds an IOPMAssertion and
+      # execs Apple-signed /usr/bin/pmset. A root XPC listener needs no
+      # entitlement — privilege comes from running as root. Caller trust is the
+      # SMAuthorizedClients requirement above plus the runtime CallerVerifier,
+      # not an entitlement grant.
+      path: Generated/Helper.entitlements
+      properties: {}
     settings:
       base:
         PRODUCT_BUNDLE_IDENTIFIER: dev.yasyf.cc-vigil.helper
@@ -161,6 +204,11 @@ targets:
       properties:
         CFBundleShortVersionString: $(MARKETING_VERSION)
         CFBundleVersion: $(CURRENT_PROJECT_VERSION)
+    entitlements:
+      # CLI tool: talks to the daemon's Unix-domain CLI socket and writes hook
+      # config files. No entitlement required.
+      path: Generated/CLI.entitlements
+      properties: {}
     settings:
       base:
         PRODUCT_BUNDLE_IDENTIFIER: dev.yasyf.cc-vigil.cli
