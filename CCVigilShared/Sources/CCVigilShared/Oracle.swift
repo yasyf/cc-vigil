@@ -56,6 +56,7 @@ public enum ActivityReason: String, Codable, Equatable, Sendable {
 public enum DiscountReason: String, Codable, Equatable, Sendable {
     case humanWaitHint = "human-wait-hint"
     case pendingAsyncMaxAge = "pending-async-max-age"
+    case staleActivityMaxAge = "stale-activity-max-age"
 }
 
 public struct ActiveSession: Codable, Equatable, Sendable {
@@ -132,25 +133,39 @@ public struct OracleState: Equatable, Sendable {
         if let epoch = session.lastEventEpoch, now - epoch <= Int64(config.activityWindowSeconds) {
             reasons.append(.recentActivity)
         }
-        if session.midTool {
-            reasons.append(.midTool)
-        }
+        // midTool and waiting carry no natural age cap, so a session whose
+        // transcript has not advanced past pendingAsyncMaxAgeSeconds is treated
+        // as leaked or dead and discounted. This keeps discovery's mtime window
+        // (TranscriptDiscoveryPolicy) and the oracle's active set expressing one
+        // policy instead of two that disagree; the claudeProcessesAlive gate
+        // stays the primary liveness signal. TODO(cc-notes 0b9f2b5): per-session
+        // process liveness (the session's own pid, not the global gate) would
+        // remove this age cliff for genuinely-live long tool calls.
+        let stale = staleBeyondMaxAge(session, config: config, now: now)
         var discount: DiscountReason?
-        if session.isWaiting {
-            if hasOnlyStalePendingAsync(session, now: now, config: config) {
-                discount = .pendingAsyncMaxAge
+        if session.midTool {
+            if stale {
+                discount = .staleActivityMaxAge
             } else {
+                reasons.append(.midTool)
+            }
+        }
+        if session.isWaiting {
+            if !stale {
                 reasons.append(.waiting)
+            } else if discount == nil {
+                discount = hasOnlyPendingAsync(session) ? .pendingAsyncMaxAge : .staleActivityMaxAge
             }
         }
         return (reasons, discount)
     }
 
-    private func hasOnlyStalePendingAsync(_ session: SessionProbe, now: Int64, config: VigilConfig) -> Bool {
-        guard !session.pending.isEmpty, session.pending.allSatisfy(\.kind.isPendingAsync) else {
-            return false
-        }
+    private func staleBeyondMaxAge(_ session: SessionProbe, config: VigilConfig, now: Int64) -> Bool {
         guard let epoch = session.lastEventEpoch else { return true }
         return now - epoch > Int64(config.pendingAsyncMaxAgeSeconds)
+    }
+
+    private func hasOnlyPendingAsync(_ session: SessionProbe) -> Bool {
+        !session.pending.isEmpty && session.pending.allSatisfy(\.kind.isPendingAsync)
     }
 }

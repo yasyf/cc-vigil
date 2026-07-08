@@ -167,30 +167,64 @@ func oraclePendingAsyncBackstopBoundary(ageSeconds: Int64, expectActive: Bool) {
     #expect(decision.discounts == [SessionDiscount(path: "/t/session.jsonl", reason: .pendingAsyncMaxAge)])
 }
 
-@Test func oracleBackstopSparesMixedPending() {
+@Test(arguments: [
+    (Int64(43200), true),
+    (Int64(43201), false),
+])
+func oracleMidToolMaxAgeBackstopBoundary(ageSeconds: Int64, expectActive: Bool) {
+    let decision = decide([probe(midTool: true, lastEventEpoch: now - ageSeconds)])
+    #expect(decision.shouldBlock == expectActive)
+    if expectActive {
+        #expect(decision.activeSessions == [ActiveSession(path: "/t/session.jsonl", reasons: [.midTool])])
+        #expect(decision.discounts.isEmpty)
+    } else {
+        #expect(decision.activeSessions.isEmpty)
+        #expect(decision.discounts == [SessionDiscount(path: "/t/session.jsonl", reason: .staleActivityMaxAge)])
+    }
+}
+
+@Test(arguments: [
+    (Int64(43200), true),
+    (Int64(43201), false),
+])
+func oracleWaitingMaxAgeBackstopBoundary(ageSeconds: Int64, expectActive: Bool) {
+    let pending = [PendingItem(toolUseID: "m1", name: "Monitor", kind: .waitingTool)]
+    let decision = decide([probe(isWaiting: true, lastEventEpoch: now - ageSeconds, pending: pending)])
+    #expect(decision.shouldBlock == expectActive)
+    if expectActive {
+        #expect(decision.activeSessions == [ActiveSession(path: "/t/session.jsonl", reasons: [.waiting])])
+        #expect(decision.discounts.isEmpty)
+    } else {
+        #expect(decision.activeSessions.isEmpty)
+        #expect(decision.discounts == [SessionDiscount(path: "/t/session.jsonl", reason: .staleActivityMaxAge)])
+    }
+}
+
+@Test func oracleBackstopDiscountsStaleMixedPendingWaiting() {
     let pending = [asyncPending(), PendingItem(toolUseID: "m1", name: "Monitor", kind: .waitingTool)]
     let decision = decide([probe(isWaiting: true, lastEventEpoch: now - 90000, pending: pending)])
-    #expect(decision.shouldBlock == true)
-    #expect(decision.activeSessions == [ActiveSession(path: "/t/session.jsonl", reasons: [.waiting])])
-    #expect(decision.discounts.isEmpty)
+    #expect(decision.shouldBlock == false)
+    #expect(decision.activeSessions.isEmpty)
+    #expect(decision.discounts == [SessionDiscount(path: "/t/session.jsonl", reason: .staleActivityMaxAge)])
 }
 
-@Test func oracleBackstopSparesEmptyPending() {
+@Test func oracleBackstopDiscountsStaleEmptyPendingWaiting() {
     let decision = decide([probe(isWaiting: true, lastEventEpoch: now - 90000)])
-    #expect(decision.shouldBlock == true)
-    #expect(decision.activeSessions == [ActiveSession(path: "/t/session.jsonl", reasons: [.waiting])])
+    #expect(decision.shouldBlock == false)
+    #expect(decision.activeSessions.isEmpty)
+    #expect(decision.discounts == [SessionDiscount(path: "/t/session.jsonl", reason: .staleActivityMaxAge)])
 }
 
-@Test func oracleBackstopRecordsDiscountEvenWhenMidToolKeepsSessionActive() {
+@Test func oracleBackstopDiscountsStaleMidToolSession() {
     let decision = decide([probe(
         isWaiting: true,
         midTool: true,
         lastEventEpoch: now - 90000,
         pending: [asyncPending()]
     )])
-    #expect(decision.shouldBlock == true)
-    #expect(decision.activeSessions == [ActiveSession(path: "/t/session.jsonl", reasons: [.midTool])])
-    #expect(decision.discounts == [SessionDiscount(path: "/t/session.jsonl", reason: .pendingAsyncMaxAge)])
+    #expect(decision.shouldBlock == false)
+    #expect(decision.activeSessions.isEmpty)
+    #expect(decision.discounts == [SessionDiscount(path: "/t/session.jsonl", reason: .staleActivityMaxAge)])
 }
 
 @Test func oracleComposesMultipleSessionsPreservingOrder() {

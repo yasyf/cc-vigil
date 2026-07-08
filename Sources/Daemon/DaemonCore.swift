@@ -204,6 +204,12 @@ actor DaemonCore {
                 Logger.daemon.fault(
                     "pending-async max-age backstop discounted \(detail, privacy: .public)"
                 )
+            case .staleActivityMaxAge:
+                let detail = "\(discount.path): mid-tool/waiting session treated as leaked or dead —"
+                    + " no transcript advance in over \(config.pendingAsyncMaxAgeSeconds)s"
+                Logger.daemon.fault(
+                    "stale-activity max-age backstop discounted \(detail, privacy: .public)"
+                )
             case .humanWaitHint:
                 Logger.daemon.info(
                     "human-wait hint discounted \(discount.path, privacy: .public)"

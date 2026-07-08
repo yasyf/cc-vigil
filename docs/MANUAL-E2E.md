@@ -117,6 +117,14 @@ advancing the transcript, the hold must persist past the 60 s notification
 (reasons include `recent-activity`) and release only after the work finishes
 plus the 5-minute activity window, or as soon as `claude` exits.
 
+**Stale-activity backstop.** A mid-tool or waiting session whose transcript has
+not advanced in over `pendingAsyncMaxAgeSeconds` (~12 h) is treated as idle even
+though it is mid-tool/waiting: the oracle discounts it and Terminal A logs
+`stale-activity max-age backstop discounted` naming the session. The live-process
+gate, not the age, is the real-work signal — this backstop only aligns the oracle
+with discovery's mtime window so both express one idle policy. The 12 h horizon
+makes it impractical to drill by hand.
+
 ## 4. Display still sleeps
 
 The display must go dark on schedule while the system stays up: cc-vigil
