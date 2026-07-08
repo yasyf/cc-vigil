@@ -18,7 +18,7 @@ public struct ProbeCache: Equatable, Sendable {
         case failed(message: String)
     }
 
-    private struct Entry: Equatable, Sendable {
+    private struct Entry: Equatable {
         let key: Key
         let outcome: Outcome
     }

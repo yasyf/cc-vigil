@@ -1,6 +1,6 @@
 import os
 
-enum BlockPushOutcome: Equatable, Sendable {
+enum BlockPushOutcome: Equatable {
     case applied(Bool)
     case unsettled(applied: Bool, detail: String)
     case failed(String)

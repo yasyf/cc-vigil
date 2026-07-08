@@ -5,3 +5,5 @@
 --swiftversion 6.0
 --indent 4
 --exclude build,CCVigilShared/.build,Generated
+# CI's swiftformat enables this by default; pin it on so local lint agrees.
+--enable redundantSendable
