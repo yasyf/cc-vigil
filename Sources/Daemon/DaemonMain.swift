@@ -1,24 +1,179 @@
-import CCTranscript
+import CCVigilDaemonKit
 import CCVigilShared
+import Dispatch
 import Foundation
+import os
 
 @main
 enum DaemonMain {
-    static func main() async throws {
-        // TODO: placeholder probe — the real transcript oracle replaces this.
-        if CommandLine.arguments.count > 1 {
-            let activity = try sessionActivity(path: CommandLine.arguments[1])
-            let epoch = activity.last_event_epoch().map(String.init) ?? "nil"
-            print(
-                "CCTranscript probe: is_waiting=\(activity.is_waiting()) "
-                    + "mid_tool=\(activity.mid_tool()) last_event_epoch=\(epoch)"
-            )
+    static func main() async {
+        let options = DaemonOptions.parse(
+            arguments: Array(CommandLine.arguments.dropFirst()),
+            environment: ProcessInfo.processInfo.environment
+        )
+        let startup = loadStartup(options: options)
+        let signal = NudgeSignal()
+        let broadcaster = options.dryRun ? nil : StatusBroadcaster()
+        let helperClient = HelperClient()
+        let pusher: any BlockPushing = options.dryRun ? LogOnlyBlockPusher() : helperClient
+
+        let core = DaemonCore(
+            config: startup.config,
+            clock: SystemClock(),
+            transcriptsRoot: options.transcriptsRoot,
+            processLister: SysctlClaudeProcessLister(),
+            pusher: pusher,
+            eventLog: EventLog(url: startup.paths.eventsURL),
+            stateURL: startup.paths.stateURL,
+            signal: signal,
+            broadcaster: broadcaster,
+            thermalReader: SMCThermalReader(),
+            batterySampler: { BatteryMonitor.sample() },
+            restoredHolds: startup.holds,
+            restoredPausedUntil: startup.pausedUntil
+        )
+        if !options.dryRun {
+            await helperClient.setDisruptionHandler {
+                Task { await core.forceReassert() }
+            }
         }
-        let decision = OracleState(sessions: [], humanWaitHints: [:], claudeProcessesAlive: false)
-            .decision(config: .default, clock: SystemClock())
-        print("CCVigilDaemon skeleton: shouldBlock=\(decision.shouldBlock); idling")
+
+        retained = await startServices(
+            options: options,
+            paths: startup.paths,
+            core: core,
+            broadcaster: broadcaster,
+            pusher: pusher
+        )
+        await core.recordStarted(version: startup.version, dryRun: options.dryRun)
+        Logger.daemon.info(
+            "CCVigilDaemon \(startup.version, privacy: .public) started (dryRun=\(options.dryRun, privacy: .public))"
+        )
+
         while true {
-            try await Task.sleep(for: .seconds(300))
+            await core.evaluate()
+            await signal.wait(upTo: core.pollIntervalSeconds)
         }
+    }
+
+    /// The monitors and servers live for the process lifetime; their C
+    /// callbacks must never dangle, so they are anchored here.
+    @MainActor private static var retained: [AnyObject] = []
+
+    private struct Startup {
+        let version: String
+        let paths: SupportPaths
+        let config: VigilConfig
+        let holds: HoldRegistry
+        let pausedUntil: Date?
+    }
+
+    private static func loadStartup(options: DaemonOptions) -> Startup {
+        guard let version = Bundle.main.infoDictionary?["CFBundleShortVersionString"] as? String else {
+            die("CFBundleShortVersionString missing from the embedded Info.plist")
+        }
+        let paths = SupportPaths(directory: options.supportDirectory)
+        do {
+            try paths.ensureDirectory()
+        } catch {
+            die("cannot create support directory \(paths.directory.path): \(error)")
+        }
+        let config: VigilConfig
+        do {
+            config = try ConfigLoader.load(url: paths.configURL)
+        } catch {
+            die("invalid config at \(paths.configURL.path): \(error)")
+        }
+        let restored: PersistedState
+        do {
+            restored = try StateStore.load(url: paths.stateURL) ?? PersistedState(holds: [], pausedUntil: nil)
+        } catch {
+            die("unreadable state at \(paths.stateURL.path): \(error)")
+        }
+        let holds = HoldRegistry.restored(
+            from: restored.holds,
+            bootedAt: ProcessFacts.bootedAt(),
+            processStart: ProcessFacts.processStart
+        )
+        let pausedUntil = restored.pausedUntil.flatMap { $0 > Date() ? $0 : nil }
+        return Startup(version: version, paths: paths, config: config, holds: holds, pausedUntil: pausedUntil)
+    }
+
+    private static func startServices(
+        options: DaemonOptions,
+        paths: SupportPaths,
+        core: DaemonCore,
+        broadcaster: StatusBroadcaster?,
+        pusher: any BlockPushing
+    ) async -> [AnyObject] {
+        let socketServer = CLISocketServer(socketPath: paths.socketPath) { request in
+            await core.handle(request)
+        }
+        do {
+            try socketServer.start()
+        } catch {
+            die("CLI socket failed to start at \(paths.socketPath): \(error)")
+        }
+
+        let monitorQueue = DispatchQueue(label: "dev.yasyf.cc-vigil.monitors")
+        let batteryMonitor = BatteryMonitor { reading in
+            Task { await core.updateBattery(reading) }
+        }
+        batteryMonitor.start()
+        let lidMonitor = LidMonitor(queue: monitorQueue) { closed in
+            Task { await core.updateLid(closed: closed) }
+        }
+        if let lidMonitor {
+            await core.updateLid(closed: lidMonitor.current())
+        }
+        let wakeMonitor = WakeMonitor {
+            Task { await core.handleWake() }
+        }
+        wakeMonitor.start(queue: monitorQueue)
+
+        var services: [AnyObject] = [socketServer, batteryMonitor, wakeMonitor]
+        if let lidMonitor {
+            services.append(lidMonitor)
+        }
+        if !options.dryRun, let broadcaster {
+            let appServer = AppXPCServer(broadcaster: broadcaster) {
+                await core.encodedStatus()
+            }
+            appServer.start()
+            services.append(appServer)
+        }
+        services.append(contentsOf: installTerminationHandlers(core: core, pusher: pusher))
+        return services
+    }
+
+    /// SIGTERM/SIGINT force a bounded clear before exit: launchd stops the
+    /// daemon on logout/unload and the block must never outlive it.
+    private static func installTerminationHandlers(
+        core: DaemonCore,
+        pusher: any BlockPushing
+    ) -> [DispatchSourceSignal] {
+        let queue = DispatchQueue(label: "dev.yasyf.cc-vigil.signals")
+        return [SIGTERM, SIGINT].map { signalNumber in
+            signal(signalNumber, SIG_IGN)
+            let source = DispatchSource.makeSignalSource(signal: signalNumber, queue: queue)
+            source.setEventHandler {
+                let done = DispatchSemaphore(value: 0)
+                Task {
+                    _ = await pusher.push(blocked: false)
+                    await core.recordStopped()
+                    done.signal()
+                }
+                _ = done.wait(timeout: .now() + 8)
+                exit(0)
+            }
+            source.resume()
+            return source
+        }
+    }
+
+    private static func die(_ message: String) -> Never {
+        Logger.daemon.fault("\(message, privacy: .public)")
+        FileHandle.standardError.write(Data("CCVigilDaemon: \(message)\n".utf8))
+        exit(78)
     }
 }

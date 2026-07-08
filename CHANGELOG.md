@@ -36,5 +36,28 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   SIGTERM, and via a 60s generation-counted dead-man after the last daemon
   connection drops while blocked. `SMAuthorizedClients` templates the team
   requirement from `DEVELOPMENT_TEAM` at build time (name-checked in Debug).
+- CCVigilDaemon, the per-user policy owner: a transcript oracle loop
+  (mtime-windowed discovery under `~/.claude/projects` with realpath dedupe,
+  per-file CCTranscript probes cached by path/mtime/size, per-session
+  skip-with-loud-log on parse failures, and a sysctl `KERN_PROCARGS2` scan
+  gating everything on live `claude` processes) driving the root helper over
+  XPC with call timeouts, exponential-backoff reconnect, 60s reconcile
+  re-pushes while blocking, and re-assert on wake. Monitors feed the cutout
+  latch: IOPS battery events plus a 60s lid-closed safety poll, SMC
+  thermal reads (Apple Silicon `Tp*`/`Te*` flt average, Intel `TC0P`/`TC0D`
+  fallback) polled only while blocking, and an IOPMrootDomain clamshell
+  interest notification. The `cli.sock` wire server (0600, 5s socket
+  timeouts) serves nudge/status/hold/release/pause/ping; hooks carry no idle
+  semantics — `Notification`/`UserPromptSubmit` only maintain human-wait
+  hints and every nudge forces an immediate re-evaluation. Recordkeeping
+  lands in `~/Library/Application Support/cc-vigil`: fail-fast `config.json`,
+  atomic `state.json` with boot/pid hold restore, and a 10MB
+  single-rotation `events.log` whose block edges carry full oracle
+  snapshots. App XPC pushes status snapshots to subscribers, and a
+  `--dry-run` mode (alternate roots, log-only blocking) supports headless
+  testing. The transcript FFI adapter lives in the new CCVigilDaemonKit
+  library (with the cc-transcript pin now in `CCVigilShared/Package.swift`)
+  so oracle composition is exercised by `swift test` against fixture and
+  real transcripts.
 
 [Unreleased]: https://github.com/yasyf/cc-vigil/commits/main
