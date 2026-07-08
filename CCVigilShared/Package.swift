@@ -17,7 +17,7 @@ let package = Package(
         // updating this pin (the single pin for the whole project).
         .package(
             url: "https://github.com/yasyf/cc-transcript.git",
-            revision: "efd4594df05e0dd9963601e1ac98789b49db005b"
+            revision: "5cc37349477e750d33c04473abee393ab54310d1"
         ),
         .package(url: "https://github.com/apple/swift-argument-parser.git", from: "1.5.0"),
     ],

@@ -18,29 +18,28 @@ public struct TranscriptProber: Sendable {
     public init() {}
 
     public func probe(path: String) throws -> SessionProbe {
-        let activity: SessionActivity
+        let summary: SessionActivitySummary
         do {
-            activity = try sessionActivity(path: path)
+            summary = try sessionActivity(path: path)
         } catch let error as RustString {
             throw TranscriptProbeError.transcript(error.toString())
         }
         var pending: [CCVigilShared.PendingItem] = []
-        for item in activity.pending() {
-            let kindString = item.kind().toString()
-            guard let kind = PendingKind(rawValue: kindString) else {
-                throw TranscriptProbeError.unknownPendingKind(kindString)
+        for item in summary.pending {
+            guard let kind = PendingKind(rawValue: item.kind) else {
+                throw TranscriptProbeError.unknownPendingKind(item.kind)
             }
             pending.append(CCVigilShared.PendingItem(
-                toolUseID: item.tool_use_id().map { $0.toString() },
-                name: item.name().toString(),
+                toolUseID: item.toolUseId,
+                name: item.name,
                 kind: kind
             ))
         }
         return SessionProbe(
             sessionPath: path,
-            isWaiting: activity.is_waiting(),
-            midTool: activity.mid_tool(),
-            lastEventEpoch: activity.last_event_epoch(),
+            isWaiting: summary.isWaiting,
+            midTool: summary.midTool,
+            lastEventEpoch: summary.lastEventEpoch,
             pending: pending
         )
     }

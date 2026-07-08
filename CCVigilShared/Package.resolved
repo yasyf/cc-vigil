@@ -1,12 +1,12 @@
 {
-  "originHash" : "49e473d3928e68f1ba661fbec1ed732ec3ad45e83b709e3ccf4882cf22a5cc93",
+  "originHash" : "8d5239ec1c01a24e2211d212efa46571395f00a0766c8b8b0e8daed84f516428",
   "pins" : [
     {
       "identity" : "cc-transcript",
       "kind" : "remoteSourceControl",
       "location" : "https://github.com/yasyf/cc-transcript.git",
       "state" : {
-        "revision" : "efd4594df05e0dd9963601e1ac98789b49db005b"
+        "revision" : "5cc37349477e750d33c04473abee393ab54310d1"
       }
     },
     {
