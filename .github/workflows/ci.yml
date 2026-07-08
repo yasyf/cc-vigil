@@ -1,0 +1,46 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+
+# One job, not a matrix: everything needs the same macOS runner, and macOS
+# minutes bill 10x. macos-26 is pinned (not macos-latest) because the image
+# ships Xcode 26.x — the toolchain CCVigilShared's tools-version 6.2 needs,
+# and the same major the project builds with locally.
+jobs:
+  test:
+    runs-on: macos-26
+    steps:
+      - uses: actions/checkout@v7
+      - name: Install tools missing from the image
+        # macos-26 ships swiftformat but not swiftlint or xcodegen; guard all
+        # three against image churn.
+        run: |
+          command -v swiftformat >/dev/null || brew install swiftformat
+          command -v swiftlint >/dev/null || brew install swiftlint
+          command -v xcodegen >/dev/null || brew install xcodegen
+      - name: Format (lint mode)
+        run: swiftformat --lint .
+      - name: Lint
+        run: swiftlint --quiet
+      - name: Generate the Xcode project
+        run: xcodegen generate
+      - name: Build (app + embedded daemon, helper, CLI; ad-hoc signed)
+        run: >
+          xcodebuild
+          -project CCVigil.xcodeproj
+          -scheme CCVigil
+          -configuration Debug
+          -derivedDataPath build
+          build
+      - name: Test (CCVigilShared)
+        run: swift test --package-path CCVigilShared

@@ -2,9 +2,10 @@
 
 **Awake while agents work. Asleep the moment they stop.** cc-vigil keeps your Mac awake while Claude Code agents are truly working — a transcript-oracle sleep inhibitor with clamshell support.
 
+[![CI](https://github.com/yasyf/cc-vigil/actions/workflows/ci.yml/badge.svg)](https://github.com/yasyf/cc-vigil/actions/workflows/ci.yml)
 [![License: PolyForm-Noncommercial-1.0.0](https://img.shields.io/badge/License-PolyForm--Noncommercial--1.0.0-blue.svg)](https://github.com/yasyf/cc-vigil/blob/main/LICENSE)
 
-Status: pre-release — this repo carries the conventions and brand; the menu-bar app and daemons land next.
+Status: pre-release — the menu-bar app, daemons, and CLI compile and run as skeletons; the transcript oracle and sleep assertions land next.
 
 ---
 

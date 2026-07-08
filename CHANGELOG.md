@@ -8,5 +8,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 - Initial scaffolding.
+- Xcode project skeleton (XcodeGen `project.yml`): the CCVigil menu-bar app with
+  CCVigilDaemon (LaunchAgent), CCVigilHelper (LaunchDaemon), and the `cc-vigil`
+  CLI embedded in its bundle, all sharing the local CCVigilShared package.
+- CI on macos-26: swiftformat/swiftlint, `xcodebuild` build of the CCVigil
+  scheme, and `swift test` for CCVigilShared.
 
 [Unreleased]: https://github.com/yasyf/cc-vigil/commits/main
