@@ -6,7 +6,17 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.1.0] - 2026-07-08
+
+First public release of cc-vigil, a transcript-oracle sleep inhibitor for
+Claude Code shipped as a signed and notarized menu-bar app.
+
 ### Added
+- Signed, notarized, and stapled Developer ID release build, distributed as a
+  Homebrew cask you install with `brew install yasyf/tap/cc-vigil` on Apple
+  Silicon Macs running macOS 14 or newer. The app registers its LaunchAgent and
+  root LaunchDaemon via SMAppService at first run, so the cask carries no
+  service block.
 - Test-only battery seam: when `CC_VIGIL_FAKE_BATTERY_FILE` names a file
   (one line, `battery <percent>` or `ac <percent>`), the daemon polls it in
   place of IOPS battery events — with a loud log — so headless end-to-end
@@ -99,4 +109,5 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   installer state machine, symlinker, away digest) lives in the new
   CCVigilAppKit library under `swift test`.
 
-[Unreleased]: https://github.com/yasyf/cc-vigil/commits/main
+[Unreleased]: https://github.com/yasyf/cc-vigil/compare/v0.1.0...HEAD
+[0.1.0]: https://github.com/yasyf/cc-vigil/releases/tag/v0.1.0

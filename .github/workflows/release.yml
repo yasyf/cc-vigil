@@ -1,0 +1,168 @@
+name: Release
+
+on:
+  push:
+    tags: ["v*"]
+
+permissions:
+  contents: write
+
+jobs:
+  verify-tag-on-main:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          fetch-depth: 0
+      - uses: yasyf/homebrew-tap/.github/actions/verify-tag-on-main@v1
+
+  release:
+    needs: verify-tag-on-main
+    # Apple Silicon runner: cc-vigil is arm64-only (the daemon links
+    # cc-transcript's Rust xcframework, which ships a macos-arm64 slice only), so
+    # the release must build on arm64. macos-26 matches CI and ships the Xcode 26
+    # toolchain CCVigilShared's Swift 6.2 tools-version needs.
+    runs-on: macos-26
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          fetch-depth: 0 # full history — CURRENT_PROJECT_VERSION is the commit count
+
+      # Pin the toolchain explicitly rather than lean on the image default, so a
+      # runner-image bump can't silently move the Swift compiler under us.
+      - uses: maxim-lobanov/setup-xcode@v1
+        with:
+          xcode-version: "26"
+
+      - name: Import Developer ID certificate
+        uses: yasyf/homebrew-tap/.github/actions/import-developer-id@v1
+        with:
+          p12: ${{ secrets.MACOS_SIGN_P12 }}
+          p12-password: ${{ secrets.MACOS_SIGN_PASSWORD }}
+          notary-key: ${{ secrets.MACOS_NOTARY_KEY }}
+          notary-key-id: ${{ secrets.MACOS_NOTARY_KEY_ID }}
+          notary-issuer-id: ${{ secrets.MACOS_NOTARY_ISSUER_ID }}
+
+      - name: Install xcodegen if missing
+        run: command -v xcodegen >/dev/null || brew install xcodegen
+
+      - name: Generate the Xcode project
+        run: xcodegen generate
+
+      - name: Build (Release, Developer ID, hardened runtime, inside-out signed)
+        run: |
+          set -euo pipefail
+          # Manual Developer ID signing so xcodebuild signs the app AND every
+          # embedded Mach-O inside-out during the build — the daemon
+          # (Contents/Library/LaunchAgents), helper (Contents/Library/LaunchDaemons),
+          # and CLI (Contents/Helpers) all live OUTSIDE Contents/MacOS, so nothing
+          # but this in-build signing reaches them. DEVELOPMENT_TEAM=$TEAM_ID (from
+          # import-developer-id) both signs with the real team and interpolates into
+          # the helper's SMAuthorizedClients requirement. HARDENED_RUNTIME + no
+          # base-entitlement injection are already pinned in the Release config;
+          # repeated here for an explicit, self-documenting invocation.
+          xcodebuild -project CCVigil.xcodeproj -scheme CCVigil \
+            -configuration Release -derivedDataPath build build \
+            MARKETING_VERSION="${GITHUB_REF_NAME#v}" \
+            CURRENT_PROJECT_VERSION="$(git rev-list --count HEAD)" \
+            CODE_SIGN_STYLE=Manual \
+            CODE_SIGN_IDENTITY="$MACOS_SIGN_IDENTITY" \
+            DEVELOPMENT_TEAM="$TEAM_ID" \
+            ENABLE_HARDENED_RUNTIME=YES \
+            CODE_SIGN_INJECT_BASE_ENTITLEMENTS=NO \
+            OTHER_CODE_SIGN_FLAGS="--timestamp"
+
+      - name: Verify every embedded Mach-O before notarizing
+        run: |
+          set -euo pipefail
+          APP=build/Build/Products/Release/CCVigil.app
+          test -d "$APP" || { echo "::error::$APP not found"; exit 1; }
+          HELPER="$APP/Contents/Library/LaunchDaemons/CCVigilHelper"
+          DAEMON="$APP/Contents/Library/LaunchAgents/CCVigilDaemon"
+
+          # Each embedded executable must be Developer ID (real TeamIdentifier),
+          # hardened-runtime, and free of get-task-allow, or notarization rejects
+          # the whole submission. The generic sign-notarize-app action only walks
+          # Contents/MacOS, so these non-standard paths are checked here.
+          for f in \
+            "$APP/Contents/MacOS/CCVigil" \
+            "$DAEMON" \
+            "$HELPER" \
+            "$APP/Contents/Helpers/cc-vigil"; do
+            test -f "$f" || { echo "::error::missing embedded Mach-O $f"; exit 1; }
+            echo "===== $f ====="
+            codesign -dvvv "$f" 2>&1 || true
+            info="$(codesign -dvvv "$f" 2>&1)"
+            grep -q "TeamIdentifier=$TEAM_ID" <<<"$info" \
+              || { echo "::error::$f is not signed by team $TEAM_ID"; exit 1; }
+            grep -Eq 'flags=0x[0-9a-f]+\([^)]*runtime[^)]*\)' <<<"$info" \
+              || { echo "::error::$f is missing the hardened runtime flag"; exit 1; }
+            if codesign -d --entitlements - "$f" 2>/dev/null | grep -q "get-task-allow"; then
+              echo "::error::$f carries get-task-allow — notarization would reject it"; exit 1
+            fi
+          done
+
+          # The daemon->helper XPC connection is gated at the system level by the
+          # helper's SMAuthorizedClients requirement. Extract that requirement from
+          # the helper's embedded Info.plist and assert (a) it pins the real team
+          # and (b) the daemon — the sole client — actually satisfies it. A drift
+          # between the requirement's identifier and the daemon's signing identifier
+          # bricks the privileged connection at runtime, so fail the release loud.
+          segedit "$HELPER" -extract __TEXT __info_plist "$RUNNER_TEMP/helper-info.plist"
+          req="$(plutil -extract SMAuthorizedClients.0 raw -o - "$RUNNER_TEMP/helper-info.plist")"
+          echo "helper SMAuthorizedClients[0] = $req"
+          case "$req" in
+            *"leaf[subject.OU] = \"$TEAM_ID\""*) : ;;
+            *) echo "::error::helper SMAuthorizedClients does not pin team $TEAM_ID: $req"; exit 1 ;;
+          esac
+          codesign --verify -R="$req" "$DAEMON" \
+            || { echo "::error::CCVigilDaemon does not satisfy the helper's SMAuthorizedClients requirement ($req) — the daemon->helper XPC connection would be refused at runtime"; exit 1; }
+
+          # Deep, strict verification of the whole bundle (every nested Mach-O).
+          codesign --verify --deep --strict --verbose=2 "$APP"
+          echo "verified: Developer ID + hardened runtime + no get-task-allow on every embedded tool; daemon satisfies SMAuthorizedClients"
+
+      - name: Notarize, staple, zip CCVigil.app
+        id: app
+        uses: yasyf/homebrew-tap/.github/actions/sign-notarize-app@v1
+        with:
+          app: build/Build/Products/Release/CCVigil.app
+          name: cc-vigil
+          # xcodebuild already signed the bundle inside-out with per-target
+          # entitlements; re-signing here (the Contents/MacOS-only loop) would both
+          # miss the embedded tools and strip their signatures. Only notarize +
+          # staple + zip.
+          sign: "false"
+          # The single Create GitHub Release step below attaches every asset and
+          # generates notes exactly once.
+          attach-to-release: "false"
+
+      - name: Create GitHub Release
+        uses: softprops/action-gh-release@v3
+        with:
+          files: |
+            ${{ steps.app.outputs.zip }}
+            ${{ steps.app.outputs.zip }}.sha256
+          generate_release_notes: true
+          prerelease: ${{ contains(github.ref_name, '-') }}
+
+      # Prerelease tags (v0.1.0-rc.1) publish assets but never touch the tap. The
+      # cask lives in the shared external tap yasyf/homebrew-tap, so
+      # `brew install yasyf/tap/cc-vigil` resolves without a bespoke tap URL;
+      # release assets still come from THIS repo's GitHub Releases.
+      - name: Render the cask
+        if: ${{ !contains(github.ref_name, '-') }}
+        uses: yasyf/homebrew-tap/.github/actions/render-formula@v1
+        with:
+          template: .github/cask/cc-vigil.rb.tmpl
+          output: Casks/cc-vigil.rb
+          substitutions: |
+            __SHA_APP__=${{ steps.app.outputs.sha256 }}
+
+      - name: Publish the cask to the tap
+        if: ${{ !contains(github.ref_name, '-') }}
+        uses: yasyf/homebrew-tap/.github/actions/publish@v1
+        with:
+          token: ${{ secrets.HOMEBREW_TAP_TOKEN }}
+          dir: tap-staging
+          message: "cc-vigil ${{ github.ref_name }}"

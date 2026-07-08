@@ -23,11 +23,13 @@ Clamshell sleep ignores ordinary idle assertions — shutting a MacBook normally
 
 ## Get started
 
-### Homebrew (coming soon)
+### Homebrew
 
 ```sh
-brew install --cask cc-vigil  # not yet published
+brew install yasyf/tap/cc-vigil
 ```
+
+Apple Silicon, macOS 14 or newer. Launch cc-vigil once afterward to run first-run setup.
 
 ### Build from source
 

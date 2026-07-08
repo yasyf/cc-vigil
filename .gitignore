@@ -21,6 +21,10 @@ Generated/
 DerivedData/
 build/
 build-release/
+
+# Release: render-formula's cask staging dir + notarized zip output
+tap-staging/
+dist/
 *.xcuserstate
 xcuserdata/
 
