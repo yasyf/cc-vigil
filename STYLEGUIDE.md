@@ -85,6 +85,43 @@ func loadReport(id: ReportID) async throws -> Report
 func loadReport(id: ReportID, completion: @escaping (Result<Report, Error>) -> Void)
 ```
 
+### Functional core, imperative shell
+
+Policy lives in `CCVigilShared` as pure `Sendable` value types: they take facts,
+return decisions or action lists, and consume outcome events. Effects (IOKit,
+XPC, processes, the filesystem) execute at the edges in the daemon and helper.
+A policy type never performs I/O.
+
+```swift
+// Good — the caller executes the actions and reports back
+mutating func set(_ blocked: Bool) -> [SleepBlockAction]
+mutating func record(_ outcome: SleepBlockOutcome)
+
+// Bad — policy reaching through to the effect
+mutating func set(_ blocked: Bool) { IOPMAssertionCreateWithName(...) }
+```
+
+### Inject time
+
+Policy code never reads the clock itself: it takes a `WallClock` (or an explicit
+`now:`) so tests pin time to a fixed value. `Date()` appears only in
+`SystemClock` and at the effect edges.
+
+```swift
+// Good
+func active(clock: some WallClock) -> [Hold]
+
+// Bad
+func active() -> [Hold] { holds.filter { $0.expiresAt > Date() } }
+```
+
+### Wire and persisted formats are explicit
+
+Types that cross a process boundary or land on disk get hand-written `Codable`
+with an explicit discriminator key (`"op"`, `"result"`), deterministic encoding
+(`.sortedKeys`, `.secondsSince1970`), and exact-JSON tests. Never let synthesized
+enum coding define a protocol's shape.
+
 ### Access control
 
 Default to `private`; widen to `internal` or `public` only when another type

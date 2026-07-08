@@ -16,5 +16,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - CCTranscript oracle dependency (revision-pinned SwiftPM git package from
   [cc-transcript](https://github.com/yasyf/cc-transcript)) wired into
   CCVigilDaemon, with a placeholder `sessionActivity` probe.
+- CCVigilShared policy core (pure logic, injected `WallClock`, no IOKit/XPC/
+  filesystem): `OracleState` transcript-activity composition with human-wait
+  hint discount, pending-async max-age backstop, and the global claude-process
+  gate; `SleepBlockPolicy` idempotence/crash-recovery state machine composing
+  IOPM + `pmset` outcomes; battery/thermal `CutoutLatch` with hysteresis;
+  `HoldRegistry` manual holds (24h TTL clamp, boot/pid restore filter); the
+  `[UInt32 BE][JSON]` wire codec with nudge/status/hold/release/pause/ping
+  ops; and the surgical `HookInstaller` for `_cc_vigil`-tagged Claude
+  settings hooks. Replaces the `Verdict` placeholder.
 
 [Unreleased]: https://github.com/yasyf/cc-vigil/commits/main
