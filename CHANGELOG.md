@@ -25,5 +25,16 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   `[UInt32 BE][JSON]` wire codec with nudge/status/hold/release/pause/ping
   ops; and the surgical `HookInstaller` for `_cc_vigil`-tagged Claude
   settings hooks. Replaces the `Verdict` placeholder.
+- CCVigilHelper root LaunchDaemon: the deliberately tiny XPC surface
+  (`setSleepBlocked`/`sleepBlockedState`/`version` on
+  `dev.yasyf.cc-vigil.helper`), gated at runtime by `CallerVerifier` —
+  audit token to `SecCode`, a team-pinned requirement with the exact daemon
+  identifier, and a name-only fallback for ad-hoc builds. Sleep mechanics
+  run through the shared `SleepBlocker`, composing `SleepBlockPolicy` with
+  an idempotent IOPM idle assertion and `pmset -a disablesleep` under a 10s
+  watchdog with a concurrent stderr drain. Force-clears on helper init, on
+  SIGTERM, and via a 60s generation-counted dead-man after the last daemon
+  connection drops while blocked. `SMAuthorizedClients` templates the team
+  requirement from `DEVELOPMENT_TEAM` at build time (name-checked in Debug).
 
 [Unreleased]: https://github.com/yasyf/cc-vigil/commits/main

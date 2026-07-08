@@ -118,14 +118,22 @@ targets:
       properties:
         CFBundleShortVersionString: $(MARKETING_VERSION)
         CFBundleVersion: $(CURRENT_PROJECT_VERSION)
-        # Placeholder designated requirement — release signing replaces TEAMID
-        # with the real team identifier.
+        # Expanded from CC_VIGIL_AUTHORIZED_CLIENT at build time (Info.plist
+        # build-setting expansion): Debug/ad-hoc embeds the name-checked
+        # variant; Release embeds the team-pinned requirement, with the team
+        # flowing in from the release pipeline's DEVELOPMENT_TEAM=<TEAMID> on
+        # the xcodebuild command line (alongside the Developer ID identity).
+        # Runtime enforcement is the helper's CallerVerifier either way.
         SMAuthorizedClients:
-          - identifier "dev.yasyf.cc-vigil" and anchor apple generic and certificate leaf[subject.OU] = "TEAMID"
+          - $(CC_VIGIL_AUTHORIZED_CLIENT)
     settings:
       base:
         PRODUCT_BUNDLE_IDENTIFIER: dev.yasyf.cc-vigil.helper
         CREATE_INFOPLIST_SECTION_IN_BINARY: "YES"
+        CC_VIGIL_AUTHORIZED_CLIENT: identifier "dev.yasyf.cc-vigil"
+      configs:
+        Release:
+          CC_VIGIL_AUTHORIZED_CLIENT: identifier "dev.yasyf.cc-vigil" and anchor apple generic and certificate leaf[subject.OU] = "$(DEVELOPMENT_TEAM)"
     dependencies:
       - package: CCVigilShared
 
