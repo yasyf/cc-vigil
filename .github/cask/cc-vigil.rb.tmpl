@@ -21,9 +21,10 @@ cask "cc-vigil" do
   homepage "https://github.com/yasyf/cc-vigil"
 
   # Apple Silicon only: the bundled cc-transcript parser ships an arm64 slice
-  # alone. macOS 14+ matches the app's deployment target (parsed with ">=").
+  # alone. macOS 14+ matches the app's deployment target (a bare version symbol
+  # already means ">=" in Homebrew).
   depends_on arch: :arm64
-  depends_on macos: ">= :sonoma"
+  depends_on macos: :sonoma
 
   app "CCVigil.app"
 
