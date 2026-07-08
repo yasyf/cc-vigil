@@ -259,7 +259,7 @@ struct DaemonRoundTripTests {
         #expect(nudgeRun.status == 0)
         #expect(nudgeRun.stdout.isEmpty)
         #expect(nudgeRun.stderr.hasPrefix("cc-vigil: nudge failed:"))
-        #expect(nudgeRun.stderr.filter { $0 == "\n" }.count == 1)
+        #expect(nudgeRun.stderr.count(where: { $0 == "\n" }) == 1)
     }
 
     @Test func installHooksEmbedsTheRealBinaryPathNeverTheSymlink() throws {
