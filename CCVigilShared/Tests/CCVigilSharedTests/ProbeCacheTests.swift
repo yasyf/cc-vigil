@@ -6,8 +6,13 @@ private func probe(path: String = "/t/a.jsonl", epoch: Int64 = 100) -> SessionPr
     SessionProbe(sessionPath: path, isWaiting: false, midTool: true, lastEventEpoch: epoch, pending: [])
 }
 
-private func key(path: String = "/t/a.jsonl", mtime: Int64 = 1000, size: Int64 = 64) -> ProbeCache.Key {
-    ProbeCache.Key(path: path, mtime: Date(timeIntervalSince1970: TimeInterval(mtime)), size: size)
+private func key(
+    path: String = "/t/a.jsonl",
+    mtime: Int64 = 1000,
+    size: Int64 = 64,
+    fileID: UInt64 = 42
+) -> ProbeCache.Key {
+    ProbeCache.Key(path: path, mtime: Date(timeIntervalSince1970: TimeInterval(mtime)), size: size, fileID: fileID)
 }
 
 @Test func missesOnEmptyCache() {
@@ -24,11 +29,19 @@ private func key(path: String = "/t/a.jsonl", mtime: Int64 = 1000, size: Int64 =
 @Test(arguments: [
     ("mtime", key(mtime: 1001, size: 64)),
     ("size", key(mtime: 1000, size: 65)),
+    ("fileID", key(mtime: 1000, size: 64, fileID: 43)),
 ])
 func missesWhenKeyComponentChanges(component: String, changed: ProbeCache.Key) {
     var cache = ProbeCache()
     cache.store(.probed(probe()), for: key())
     #expect(cache.outcome(for: changed) == nil, "\(component) change must invalidate")
+}
+
+@Test func atomicReplaceWithSamePathMtimeSizeMissesOnNewFileID() {
+    var cache = ProbeCache()
+    cache.store(.probed(probe()), for: key(fileID: 100))
+    #expect(cache.outcome(for: key(fileID: 100)) == .probed(probe()))
+    #expect(cache.outcome(for: key(fileID: 200)) == nil)
 }
 
 @Test func cachesFailuresUnderSameKeying() {

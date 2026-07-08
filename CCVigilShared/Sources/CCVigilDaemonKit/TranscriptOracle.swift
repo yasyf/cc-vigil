@@ -40,7 +40,12 @@ public final class TranscriptOracle {
         var probes: [SessionProbe] = []
         var newFailures: [ProbeFailure] = []
         for entry in selected {
-            let key = ProbeCache.Key(path: entry.path, mtime: entry.mtime, size: entry.size)
+            let key = ProbeCache.Key(
+                path: entry.path,
+                mtime: entry.mtime,
+                size: entry.size,
+                fileID: entry.fileID
+            )
             let outcome: ProbeCache.Outcome
             if let cached = cache.outcome(for: key) {
                 outcome = cached

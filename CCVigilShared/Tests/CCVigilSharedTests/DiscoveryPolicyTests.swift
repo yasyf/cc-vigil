@@ -3,7 +3,7 @@ import Foundation
 import Testing
 
 private func entry(path: String, mtime: Int64) -> TranscriptFileEntry {
-    TranscriptFileEntry(path: path, mtime: Date(timeIntervalSince1970: TimeInterval(mtime)), size: 1)
+    TranscriptFileEntry(path: path, mtime: Date(timeIntervalSince1970: TimeInterval(mtime)), size: 1, fileID: 1)
 }
 
 @Test func windowIsMaxOfActivityAndPendingAsyncPlusMargin() throws {

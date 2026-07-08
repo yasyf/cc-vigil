@@ -22,9 +22,10 @@ public struct TranscriptScanner: Sendable {
             // A transcript can vanish between listing and stat; skip it.
             guard let attributes = try? fileManager.attributesOfItem(atPath: realPath),
                   let mtime = attributes[.modificationDate] as? Date,
-                  let size = (attributes[.size] as? NSNumber)?.int64Value
+                  let size = (attributes[.size] as? NSNumber)?.int64Value,
+                  let fileID = (attributes[.systemFileNumber] as? NSNumber)?.uint64Value
             else { continue }
-            byRealPath[realPath] = TranscriptFileEntry(path: realPath, mtime: mtime, size: size)
+            byRealPath[realPath] = TranscriptFileEntry(path: realPath, mtime: mtime, size: size, fileID: fileID)
         }
         return Array(byRealPath.values)
     }

@@ -15,6 +15,7 @@ import Testing
     let alphaEntry = try #require(entries.first { $0.path == alpha.path })
     #expect(alphaEntry.size == 323)
     #expect(alphaEntry.mtime == Date(timeIntervalSince1970: TimeInterval(fixtureLastEventEpoch)))
+    #expect(alphaEntry.fileID != 0)
 }
 
 @Test func resolvesSymlinksAndDedupesByRealPath() throws {
