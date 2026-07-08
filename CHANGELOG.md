@@ -6,6 +6,25 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.1.1] - 2026-07-08
+
+### Fixed
+- The human-wait hint no longer idles a session with live background work.
+  A silent `run_in_background` Bash or compute-only Workflow that outlives the
+  agent's `Stop` used to be dropped about a minute later, when Claude Code's
+  idle `Notification` fired and the frozen transcript let the hint win — the
+  issue #7 regression the transcript oracle exists to prevent. The oracle now
+  holds the block while machine-driven work (background jobs, async tasks,
+  subagents, workflows) is pending, and discounts only a parked session or one
+  the max-age backstop has already retired.
+- Uninstall clears the sleep block and confirms it settled while the daemon and
+  helper are still alive and registered, before it unregisters the services, so
+  a transient `pmset` failure or a SIGKILL-truncated shutdown handler can no
+  longer strand `disablesleep=1`. The helper's SIGTERM handler now retries the
+  clear until it settles instead of attempting it once.
+- The Homebrew cask no longer emits a `depends_on macos` deprecation warning on
+  every `brew` operation.
+
 ## [0.1.0] - 2026-07-08
 
 First public release of cc-vigil, a transcript-oracle sleep inhibitor for
@@ -109,5 +128,6 @@ Claude Code shipped as a signed and notarized menu-bar app.
   installer state machine, symlinker, away digest) lives in the new
   CCVigilAppKit library under `swift test`.
 
-[Unreleased]: https://github.com/yasyf/cc-vigil/compare/v0.1.0...HEAD
+[Unreleased]: https://github.com/yasyf/cc-vigil/compare/v0.1.1...HEAD
+[0.1.1]: https://github.com/yasyf/cc-vigil/releases/tag/v0.1.1
 [0.1.0]: https://github.com/yasyf/cc-vigil/releases/tag/v0.1.0

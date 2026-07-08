@@ -93,22 +93,29 @@ running.
    within 15 s,
    `cc-vigil status` lists the session with reason `waiting` and Terminal B
    still shows 1 assertion, SleepDisabled 1. This is the drill's core check.
-3. Keep your hands off. About 60 s after the reply, Claude Code fires the
-   idle `Notification` hook ("Claude is waiting for your input"). Terminal A
-   logs the block release with a `human-wait-hint` discount for the session,
-   and Terminal B drops to 0 assertions, SleepDisabled 0. This release is by
-   design: nothing advanced the transcript, and the harness itself reported
-   the agent as waiting on you. If your setup never fires idle
-   notifications, the block instead persists while the item pends; note
-   which behavior you saw.
-4. Type any prompt (`status?`). `UserPromptSubmit` clears the hint: the block
-   returns within seconds while the new turn runs.
-5. Exit `claude` entirely. Process gate: within one idle poll (45 s)
-   everything idles regardless of the still-pending background item.
+3. Keep your hands off. About 60 s after the reply, Claude Code fires the idle
+   `Notification` hook ("Claude is waiting for your input"), and cc-vigil records
+   the human-wait hint. The block holds anyway: the transcript still shows the
+   background `Bash` pending, and live machine work outranks the hint. Terminal A
+   keeps the session listed with reason `waiting`, and Terminal B stays at 1
+   assertion, SleepDisabled 1. The hold rides through the idle notification —
+   this is the issue-#7 fix.
+4. The hold does not drop on its own while `claude` idles: the background `Bash`
+   stays this turn's pending work until a new prompt opens a fresh turn or it
+   ages out past the max-age backstop (~12 h). To release it now, exit `claude`
+   entirely — the process gate idles everything within one idle poll (45 s),
+   regardless of the still-pending item.
+5. Contrast the parked case in a fresh session: send a plain prompt with no
+   background job and let the turn end. The same idle `Notification` now
+   discounts the session (`human-wait-hint`) and Terminal B drops to 0 within
+   seconds. The hint still lets the Mac sleep — it just no longer overrides live
+   work.
 
-**Verify.** `cc-vigil log -n 30` shows the block/unblock edges, each carrying
-the oracle snapshot with the session path and per-session reasons
-(`waiting`, then the `human-wait-hint` discount).
+**Verify.** `cc-vigil log -n 30` shows the session holding its `waiting` reason
+through the idle notification with no `human-wait-hint` discount while the
+background `Bash` pends, and the unblock edge landing only when you exit `claude`
+or the pending item ages out. The parked-session contrast logs the
+`human-wait-hint` discount instead.
 
 **Full-fidelity variant.** Repeat with real streaming work — a prompt that
 spawns subagents or a workflow ("launch a subagent to summarize every file

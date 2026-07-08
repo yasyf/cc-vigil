@@ -65,7 +65,7 @@ cc-vigil inverts the relationship. Hooks carry no idle semantics at all; every h
 
 A session counts as active only if live `claude` processes exist and the transcript shows one of: an event inside the activity window, an unfinished tool call, or a wait on long-running work (background tasks, sub-agents, workflows). Two discounts keep that honest:
 
-- **Human-wait hint** — a `Notification` hook newer than the last transcript event means the agent is waiting on *you*, so the session stops holding the Mac awake until you reply.
+- **Human-wait hint** — an idle or permission `Notification` newer than the last transcript event means the agent is parked on *you*, so a session with nothing else running lets the Mac sleep until you reply. Live machine work overrides it: while a background task, sub-agent, or workflow is still pending, the block holds until that work clears or ages out past the backstop — Claude Code fires the same idle notification the moment such a job detaches from the turn, and nothing advances the transcript while it runs.
 - **Max-age backstop** — pending async work whose transcript hasn't advanced in 12 hours (configurable) stops counting, with a loud log. This is a real case, not paranoia: a stopped workflow leaves "pending" entries in the transcript forever.
 
 The oracle re-evaluates every 15 seconds while blocking, every 45 seconds while idle, and immediately on any nudge.
