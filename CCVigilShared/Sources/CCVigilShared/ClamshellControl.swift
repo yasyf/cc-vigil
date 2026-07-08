@@ -44,13 +44,16 @@ public final class PmsetClamshellControl: ClamshellControlling {
 
     private let launcher: any PmsetLaunching
     private let timeoutSeconds: Double
+    private let terminationGraceSeconds: Double
 
     public init(
         launcher: any PmsetLaunching,
-        timeoutSeconds: Double = PmsetClamshellControl.watchdogSeconds
+        timeoutSeconds: Double = PmsetClamshellControl.watchdogSeconds,
+        terminationGraceSeconds: Double = PmsetClamshellControl.watchdogSeconds
     ) {
         self.launcher = launcher
         self.timeoutSeconds = timeoutSeconds
+        self.terminationGraceSeconds = terminationGraceSeconds
     }
 
     public func setDisableSleep(_ disableSleep: Bool) -> PmsetRunResult {
@@ -74,7 +77,7 @@ public final class PmsetClamshellControl: ClamshellControlling {
             // Reap the terminated child before returning: a still-running pmset
             // could otherwise finish after the next serialized `disablesleep`
             // call and clobber it (re-strand disablesleep at 1).
-            _ = exited.wait(timeout: .now() + timeoutSeconds)
+            _ = exited.wait(timeout: .now() + terminationGraceSeconds)
             return .watchdogTimedOut(stderr: drained(stderr))
         }
         guard let status = exitStatus.withLock({ $0 }) else {

@@ -58,7 +58,10 @@ private final class ScriptedPmsetProcess: PmsetProcessHandle, @unchecked Sendabl
         guard case let .hangUntilTerminated(status, delayMillis) = script,
               let onExit = capturedOnExit.withLock({ $0 })
         else { return }
-        DispatchQueue.global().asyncAfter(deadline: .now() + .milliseconds(delayMillis)) { [onExitDelivered] in
+        // A dedicated thread (not the global queue) so parallel test load can't
+        // starve delivery and race the reap wait under test.
+        Thread.detachNewThread { [onExitDelivered] in
+            Thread.sleep(forTimeInterval: Double(delayMillis) / 1000)
             onExitDelivered.withLock { $0 = true }
             onExit(status)
         }
@@ -120,7 +123,7 @@ func pmsetRunResultSuccess(result: PmsetRunResult, expected: Bool) {
 @Test func clamshellWatchdogTerminatesHungPmset() {
     let process = ScriptedPmsetProcess(script: .hang(stderrChunks: ["partial"]))
     let launcher = ScriptedPmsetLauncher(process: process)
-    let control = PmsetClamshellControl(launcher: launcher, timeoutSeconds: 0.05)
+    let control = PmsetClamshellControl(launcher: launcher, timeoutSeconds: 0.05, terminationGraceSeconds: 0.05)
     #expect(control.setDisableSleep(true) == .watchdogTimedOut(stderr: "partial"))
     #expect(process.terminated == true)
 }
@@ -128,7 +131,7 @@ func pmsetRunResultSuccess(result: PmsetRunResult, expected: Bool) {
 @Test func clamshellReapsTerminatedChildBeforeReturning() {
     let process = ScriptedPmsetProcess(script: .hangUntilTerminated(status: 0, exitAfterMilliseconds: 5))
     let launcher = ScriptedPmsetLauncher(process: process)
-    let control = PmsetClamshellControl(launcher: launcher, timeoutSeconds: 0.2)
+    let control = PmsetClamshellControl(launcher: launcher, timeoutSeconds: 0.05, terminationGraceSeconds: 5)
     #expect(control.setDisableSleep(true) == .watchdogTimedOut(stderr: ""))
     #expect(process.terminated == true)
     #expect(process.onExitInvoked == true)
