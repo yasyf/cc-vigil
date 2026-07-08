@@ -3,6 +3,15 @@ import Dispatch
 import Foundation
 import os
 
+// Only ad-hoc/dev Helper builds (the Debug config sets CCVIGIL_ADHOC_HELPER_AUTH
+// in project.yml) may accept a daemon by signing identifier alone. Release never
+// sets the flag, so a Release build whose team-id read returns nil fails closed.
+#if CCVIGIL_ADHOC_HELPER_AUTH
+    private let allowIdentifierOnlyFallback = true
+#else
+    private let allowIdentifierOnlyFallback = false
+#endif
+
 @main
 enum HelperMain {
     static func main() {
@@ -31,7 +40,11 @@ enum HelperMain {
         sigterm.resume()
 
         let delegate = HelperListenerDelegate(
-            verifier: CallerVerifier(clientIdentifier: HelperXPC.daemonIdentifier, checker: SecCodeChecker()),
+            verifier: CallerVerifier(
+                clientIdentifier: HelperXPC.daemonIdentifier,
+                checker: SecCodeChecker(),
+                allowIdentifierOnlyFallback: allowIdentifierOnlyFallback
+            ),
             blocker: blocker,
             version: version
         )

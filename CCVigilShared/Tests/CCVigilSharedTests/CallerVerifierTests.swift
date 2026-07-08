@@ -38,7 +38,11 @@ private final class FakeCodeSignatureChecker: CodeSignatureChecking, @unchecked 
         requirementSatisfied: true,
         callerIdentifier: HelperXPC.daemonIdentifier
     )
-    let verifier = CallerVerifier(clientIdentifier: HelperXPC.daemonIdentifier, checker: checker)
+    let verifier = CallerVerifier(
+        clientIdentifier: HelperXPC.daemonIdentifier,
+        checker: checker,
+        allowIdentifierOnlyFallback: true
+    )
     #expect(verifier.shouldAccept(auditToken: nil) == false)
     #expect(checker.requirementsEvaluated.isEmpty)
     #expect(checker.identifierLookups == 0)
@@ -46,7 +50,11 @@ private final class FakeCodeSignatureChecker: CodeSignatureChecking, @unchecked 
 
 @Test func verifierAcceptsTeamPinnedCallerWithExactRequirement() {
     let checker = FakeCodeSignatureChecker(selfTeam: "TEAM123", requirementSatisfied: true)
-    let verifier = CallerVerifier(clientIdentifier: "dev.yasyf.cc-vigil.daemon", checker: checker)
+    let verifier = CallerVerifier(
+        clientIdentifier: "dev.yasyf.cc-vigil.daemon",
+        checker: checker,
+        allowIdentifierOnlyFallback: true
+    )
     #expect(verifier.shouldAccept(auditToken: auditToken) == true)
     #expect(checker.requirementsEvaluated == [
         "identifier \"dev.yasyf.cc-vigil.daemon\" and anchor apple generic "
@@ -61,7 +69,11 @@ private final class FakeCodeSignatureChecker: CodeSignatureChecking, @unchecked 
         requirementSatisfied: false,
         callerIdentifier: HelperXPC.daemonIdentifier
     )
-    let verifier = CallerVerifier(clientIdentifier: HelperXPC.daemonIdentifier, checker: checker)
+    let verifier = CallerVerifier(
+        clientIdentifier: HelperXPC.daemonIdentifier,
+        checker: checker,
+        allowIdentifierOnlyFallback: true
+    )
     #expect(verifier.shouldAccept(auditToken: auditToken) == false)
     #expect(checker.requirementsEvaluated.count == 1)
     #expect(checker.identifierLookups == 0)
@@ -75,8 +87,24 @@ private final class FakeCodeSignatureChecker: CodeSignatureChecking, @unchecked 
 ])
 func verifierAdHocMatchesSigningIdentifierExactly(callerIdentifier: String?, expected: Bool) {
     let checker = FakeCodeSignatureChecker(selfTeam: nil, callerIdentifier: callerIdentifier)
-    let verifier = CallerVerifier(clientIdentifier: "dev.yasyf.cc-vigil.daemon", checker: checker)
+    let verifier = CallerVerifier(
+        clientIdentifier: "dev.yasyf.cc-vigil.daemon",
+        checker: checker,
+        allowIdentifierOnlyFallback: true
+    )
     #expect(verifier.shouldAccept(auditToken: auditToken) == expected)
     #expect(checker.requirementsEvaluated.isEmpty)
     #expect(checker.identifierLookups == 1)
+}
+
+@Test func verifierFailsClosedInReleaseWhenTeamIdentifierMissing() {
+    let checker = FakeCodeSignatureChecker(selfTeam: nil, callerIdentifier: HelperXPC.daemonIdentifier)
+    let verifier = CallerVerifier(
+        clientIdentifier: HelperXPC.daemonIdentifier,
+        checker: checker,
+        allowIdentifierOnlyFallback: false
+    )
+    #expect(verifier.shouldAccept(auditToken: auditToken) == false)
+    #expect(checker.requirementsEvaluated.isEmpty)
+    #expect(checker.identifierLookups == 0)
 }
