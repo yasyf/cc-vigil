@@ -25,7 +25,16 @@
       "Bash(jq:*)",
       "Bash(ls:*)",
       "Bash(rg:*)",
-      "Bash(wc:*)"
+      "Bash(swift build:*)",
+      "Bash(swift package:*)",
+      "Bash(swift run:*)",
+      "Bash(swift test:*)",
+      "Bash(swiftformat --lint:*)",
+      "Bash(swiftlint:*)",
+      "Bash(wc:*)",
+      "Bash(xcodebuild:*)",
+      "Bash(xcodebuildmcp:*)",
+      "Bash(xcodegen:*)"
     ],
     "defaultMode": "auto"
   },

@@ -1,18 +1,27 @@
 # cc-vigil Development Guide
 
-Keeps your Mac awake while Claude Code agents are truly working — a transcript-oracle sleep inhibitor with clamshell support. cc-vigil is a Swift macOS menu-bar app plus daemons: it reads Claude Code transcripts to decide whether agents are actually working, and holds a sleep assertion (clamshell included) only while they are. The Xcode project and app skeleton land in a later stage; this repo currently carries the conventions and brand.
+Keeps your Mac awake while Claude Code agents are truly working — a transcript-oracle sleep inhibitor with clamshell support. cc-vigil is a Swift macOS menu-bar app plus daemons: it reads Claude Code transcripts to decide whether agents are actually working, and holds a sleep assertion (clamshell included) only while they are. The Xcode project is generated: `xcodegen generate` emits `CCVigil.xcodeproj` from `project.yml`, the source of truth — edit the spec, never the project.
 
 ## Repository Structure
 
 ```
 cc-vigil/
-├── .claude/          # Claude Code config — settings, guard-hook packs, jj config
-├── docs/             # Brand assets (mascot, banner, social card)
-├── AGENTS.md         # This file — shared conventions
-├── CLAUDE.md         # Claude-only rules; embeds AGENTS.md
-├── STYLEGUIDE.md     # Concrete style rules
-├── README.md         # Project overview
-└── CHANGELOG.md      # Keep a Changelog history
+├── .github/workflows/  # CI — swiftformat/swiftlint + xcodebuild build + swift test on macos-26
+├── .claude/            # Claude Code config — settings, guard-hook packs, jj config, skills
+├── docs/               # Brand assets (mascot, banner, social card)
+├── project.yml         # XcodeGen spec — source of truth for CCVigil.xcodeproj (generated, gitignored)
+├── Sources/
+│   ├── App/            # CCVigil — SwiftUI menu-bar app (LSUIElement, MenuBarExtra)
+│   ├── Daemon/         # CCVigilDaemon — LaunchAgent; transcript oracle + sleep assertions
+│   ├── Helper/         # CCVigilHelper — LaunchDaemon; privileged clamshell/power work
+│   └── CLI/            # cc-vigil — user-facing CLI, embedded at Contents/Helpers
+├── Resources/          # launchd plists copied into the app bundle next to their binaries
+├── CCVigilShared/      # local SPM package all four targets depend on (+ its tests)
+├── AGENTS.md           # This file — shared conventions
+├── CLAUDE.md           # Claude-only rules; embeds AGENTS.md
+├── STYLEGUIDE.md       # Concrete style rules
+├── README.md           # Project overview
+└── CHANGELOG.md        # Keep a Changelog history
 ```
 
 ## Ask Before Assuming
@@ -109,9 +118,13 @@ Reach for your **LSP** when the answer must be exhaustive/structural (findRefere
 
 **Don't contort code to satisfy a checker.** The type checker and linter serve the code, not the other way around. Don't reshape a data model, widen a type, or bolt on a `cast(...)` / narrowing-only `assert isinstance(...)` / blanket ignore just to silence a diagnostic. If a clean fix isn't obvious, leave the diagnostic — a visible diagnostic is preferable to scar tissue. (Most checker noise isn't worth acting on at all; act only when it flags a real bug.)
 
-**Mechanical linting.** CI and hooks handle formatting and import order; fix only what needs human judgment. When reviewing code, don't flag mechanical lint violations (line length, whitespace, import order, trailing commas).
+**Mechanical linting.** Running `swiftformat .`/`swiftlint` by hand is fine, and encouraged — the pre-commit hooks (prek: swiftformat + swiftlint, calling the brew-installed binaries) also run on every `git commit`; run `uvx prek install` once to activate them. Fix what needs human judgment and let the tooling own the mechanical churn. When reviewing code, don't flag mechanical lint violations (whitespace, ordering, line length).
 
-**Testing.** The test suite arrives with the Xcode project (Swift Testing targets alongside the app); until then there is nothing to run.
+**Build & run.** `xcodegen generate` emits `CCVigil.xcodeproj` from `project.yml`; build with `xcodebuild -project CCVigil.xcodeproj -scheme CCVigil build`. The CCVigil scheme builds the daemon, helper, and CLI too and embeds them in the app bundle (`Contents/Library/LaunchAgents`, `Contents/Library/LaunchDaemons`, `Contents/Helpers`).
+
+**Testing.** Tests live in `CCVigilShared/Tests/` and use Swift Testing — free `@Test` functions with `#expect`/`#require` against specific expected values, parameterized via `@Test(arguments:)`. Run them with `swift test --package-path CCVigilShared`. Mock the boundaries the code talks to (filesystem, clock, power APIs) and leave the function under test real.
+
+**XcodeBuildMCP.** If using XcodeBuildMCP, use the installed `xcodebuildmcp-cli` skill before calling XcodeBuildMCP tools.
 
 **Writing docs.** When writing or revising docs, a README, a tutorial, a how-to, or reference, use the `writing-docs` skill (Diataxis modes, voice rules, and runnable code-sample rules) and run `slop-cop check <file> --lang=markdown` before you finish (slop-cop is a Go binary; if it's not on PATH, run the `/slop-cop-check` skill — never `uvx slop-cop`).
 
