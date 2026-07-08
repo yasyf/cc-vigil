@@ -7,7 +7,7 @@ disabled_rules:
   - todo # the STYLEGUIDE sanctions TODO comments; the default rule would flag every one
   - trailing_comma # SwiftFormat owns comma placement; this rule fights its default
 identifier_name:
-  excluded: [ok, id] # well-known wire/protocol tokens
+  excluded: [ok, id, at] # well-known wire/protocol tokens
 excluded:
   - .build
   - CCVigilShared/.build

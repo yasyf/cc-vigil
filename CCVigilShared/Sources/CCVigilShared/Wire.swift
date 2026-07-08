@@ -196,7 +196,7 @@ extension WireResponse: Codable {
 
 public enum WireCodec {
     public static func encodeFrame(_ value: some Encodable) throws -> Data {
-        try WireFrame.encode(payload: makeEncoder().encode(value))
+        try WireFrame.encode(payload: encodePayload(value))
     }
 
     public static func decodeFrame<T: Decodable>(
@@ -204,7 +204,15 @@ public enum WireCodec {
         from buffer: Data
     ) throws -> (value: T, consumed: Int)? {
         guard let (payload, consumed) = try WireFrame.decode(buffer: buffer) else { return nil }
-        return try (makeDecoder().decode(type, from: payload), consumed)
+        return try (decodePayload(type, from: payload), consumed)
+    }
+
+    public static func encodePayload(_ value: some Encodable) throws -> Data {
+        try makeEncoder().encode(value)
+    }
+
+    public static func decodePayload<T: Decodable>(_ type: T.Type, from payload: Data) throws -> T {
+        try makeDecoder().decode(type, from: payload)
     }
 
     private static func makeEncoder() -> JSONEncoder {
