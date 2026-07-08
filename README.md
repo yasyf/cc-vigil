@@ -31,7 +31,7 @@ brew install --cask cc-vigil  # not yet published
 
 ### Build from source
 
-You need Xcode 26 and [XcodeGen](https://github.com/yonaskolb/XcodeGen) (`brew install xcodegen`).
+You need an Apple Silicon Mac (the bundled cc-transcript parser ships arm64-only for now), Xcode 26, and [XcodeGen](https://github.com/yonaskolb/XcodeGen) (`brew install xcodegen`).
 
 ```sh
 git clone https://github.com/yasyf/cc-vigil.git
