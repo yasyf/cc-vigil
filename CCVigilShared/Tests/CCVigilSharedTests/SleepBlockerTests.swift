@@ -26,6 +26,21 @@ private final class FakeClamshell: ClamshellControlling {
     }
 }
 
+private final class SequencedClamshell: ClamshellControlling {
+    private var results: [PmsetRunResult]
+    private(set) var calls: [Bool] = []
+
+    init(_ results: [PmsetRunResult]) {
+        precondition(!results.isEmpty)
+        self.results = results
+    }
+
+    func setDisableSleep(_ disableSleep: Bool) -> PmsetRunResult {
+        calls.append(disableSleep)
+        return results.count > 1 ? results.removeFirst() : results[0]
+    }
+}
+
 @Test func blockerStartsUnknownAndNotBlocking() {
     let blocker = SleepBlocker(assertion: FakeIdleAssertion(), clamshell: FakeClamshell())
     #expect(blocker.state == SleepBlockState(desired: false, assertionHeld: false, pmsetDisableSleep: nil))
@@ -106,4 +121,31 @@ func blockerPmsetFailureLeavesUnsettledUnknown(failure: PmsetRunResult) {
     #expect(report.state == SleepBlockState(desired: true, assertionHeld: false, pmsetDisableSleep: true))
     #expect(report.state.isSettled == false)
     #expect(blocker.isBlocking == false)
+}
+
+@Test func clearUntilSettledRetriesTransientPmsetFailure() {
+    let clamshell = SequencedClamshell([
+        .exited(status: 1, stderr: "resource busy"),
+        .exited(status: 0, stderr: ""),
+    ])
+    let blocker = SleepBlocker(assertion: FakeIdleAssertion(), clamshell: clamshell)
+    var naps = 0
+    let (report, attempts) = blocker.clearUntilSettled(maxAttempts: 4, nap: { _ in naps += 1 })
+    #expect(attempts == 2)
+    #expect(naps == 1)
+    #expect(report.state.isSettled == true)
+    #expect(report.state.pmsetDisableSleep == false)
+    #expect(clamshell.calls == [false, false])
+    #expect(blocker.isBlocking == false)
+}
+
+@Test func clearUntilSettledStopsAtBudgetWhenNeverSettling() {
+    let clamshell = SequencedClamshell([.launchFailed(message: "ENOENT")])
+    let blocker = SleepBlocker(assertion: FakeIdleAssertion(), clamshell: clamshell)
+    var naps = 0
+    let (report, attempts) = blocker.clearUntilSettled(maxAttempts: 3, nap: { _ in naps += 1 })
+    #expect(attempts == 3)
+    #expect(naps == 2)
+    #expect(report.state.isSettled == false)
+    #expect(clamshell.calls == [false, false, false])
 }

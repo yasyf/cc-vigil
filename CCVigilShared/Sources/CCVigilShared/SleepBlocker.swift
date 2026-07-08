@@ -65,4 +65,22 @@ public final class SleepBlocker: Sendable {
             return SleepBlockReport(state: guarded.policy.state, pmset: pmsetResult)
         }
     }
+
+    /// Clears the block, retrying the pmset step until it settles or the attempt
+    /// budget is spent, napping between tries. The bound covers fast transient
+    /// failures — a quick non-zero pmset exit — not hangs: a single hung pmset
+    /// already spends launchd's SIGKILL budget under the clamshell watchdog, so
+    /// this never rescues a hang, it only retries failures that return quickly.
+    /// Returns the final report and the attempts made.
+    public func clearUntilSettled(maxAttempts: Int, nap: (Int) -> Void) -> (report: SleepBlockReport, attempts: Int) {
+        precondition(maxAttempts >= 1, "clearUntilSettled needs at least one attempt")
+        var report = setBlocked(false)
+        var attempts = 1
+        while !report.state.isSettled, attempts < maxAttempts {
+            nap(attempts)
+            report = setBlocked(false)
+            attempts += 1
+        }
+        return (report, attempts)
+    }
 }

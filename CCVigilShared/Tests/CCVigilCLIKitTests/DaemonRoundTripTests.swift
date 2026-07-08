@@ -194,6 +194,16 @@ struct DaemonRoundTripTests {
             return
         }
         #expect(message.contains("itest"))
+
+        // The uninstall clear confirms a settled unblock and stops the daemon
+        // wanting the block; a subsequent hold no longer re-blocks.
+        #expect(try client.roundTrip(.clear) == .ok)
+        #expect(try client.roundTrip(
+            .hold(key: "post-clear", reason: "ignored", ttlSeconds: 120, pid: nil)
+        ) == .ok)
+        let afterClear = try pollStatus(client) { $0.holds.contains { $0.key == "post-clear" } }
+        #expect(afterClear.shouldBlock == false)
+        #expect(afterClear.blockApplied == false)
     }
 
     @Test func cliBinaryDrivesTheDaemon() throws {

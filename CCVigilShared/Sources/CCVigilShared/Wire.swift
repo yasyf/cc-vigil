@@ -57,6 +57,7 @@ public enum WireRequest: Equatable, Sendable {
     case hold(key: String, reason: String, ttlSeconds: Int, pid: Int32?)
     case release(key: String)
     case pause(seconds: Int)
+    case clear
     case ping
 }
 
@@ -67,7 +68,7 @@ extension WireRequest: Codable {
     }
 
     private enum Operation: String, Codable {
-        case nudge, status, hold, release, pause, ping
+        case nudge, status, hold, release, pause, clear, ping
     }
 
     public init(from decoder: Decoder) throws {
@@ -93,6 +94,8 @@ extension WireRequest: Codable {
             self = try .release(key: container.decode(String.self, forKey: .key))
         case .pause:
             self = try .pause(seconds: container.decode(Int.self, forKey: .seconds))
+        case .clear:
+            self = .clear
         case .ping:
             self = .ping
         }
@@ -121,6 +124,8 @@ extension WireRequest: Codable {
         case let .pause(seconds):
             try container.encode(Operation.pause, forKey: .operation)
             try container.encode(seconds, forKey: .seconds)
+        case .clear:
+            try container.encode(Operation.clear, forKey: .operation)
         case .ping:
             try container.encode(Operation.ping, forKey: .operation)
         }

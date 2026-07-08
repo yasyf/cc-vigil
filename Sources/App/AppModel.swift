@@ -253,7 +253,7 @@ final class AppModel {
     func uninstall() {
         maintenanceMessage = "uninstalling…"
         Task {
-            let lines = await Uninstaller.run(registrar: registrar)
+            let lines = await Uninstaller.run(registrar: registrar, commands: commands)
             maintenanceMessage = lines.joined(separator: "\n")
             resetFirstRun()
         }

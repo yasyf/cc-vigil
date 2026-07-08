@@ -31,9 +31,16 @@ enum HelperMain {
         signal(SIGTERM, SIG_IGN)
         let sigterm = DispatchSource.makeSignalSource(signal: SIGTERM, queue: .main)
         sigterm.setEventHandler {
-            let report = blocker.setBlocked(false)
+            let (report, attempts) = blocker.clearUntilSettled(
+                maxAttempts: 4,
+                nap: { _ in Thread.sleep(forTimeInterval: 0.1) }
+            )
             Logger.helper.info(
-                "SIGTERM force-clear: pmset=\(String(describing: report.pmset), privacy: .public)"
+                """
+                SIGTERM force-clear: settled=\(report.state.isSettled, privacy: .public) \
+                attempts=\(attempts, privacy: .public) \
+                pmset=\(String(describing: report.pmset), privacy: .public)
+                """
             )
             exit(0)
         }

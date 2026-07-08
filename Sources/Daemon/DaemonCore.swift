@@ -6,6 +6,7 @@ import os
 actor DaemonCore {
     static let reconcileSeconds: TimeInterval = 60
     static let batterySafetyPollSeconds: TimeInterval = 60
+    static let clearAttempts = 4
 
     private let config: VigilConfig
     private let clock: SystemClock
@@ -24,6 +25,7 @@ actor DaemonCore {
     private var latch: CutoutLatch
     private var helperLink: HelperLink
     private var pausedUntil: Date?
+    private var shuttingDown = false
     private var lidClosed = false
     private var battery: BatteryReading?
     private var appliedBlocked = false
@@ -81,7 +83,7 @@ actor DaemonCore {
         updateLatch(now: now)
         let activeHolds = holds.active(clock: clock)
         var desired = decision.shouldBlock || !activeHolds.isEmpty
-        if pausedUntil != nil || latch.rejectsAcquire {
+        if pausedUntil != nil || latch.rejectsAcquire || shuttingDown {
             desired = false
         }
         lastDesired = desired
@@ -123,8 +125,71 @@ actor DaemonCore {
             persistState()
             await signal.nudge()
             return .ok
+        case .clear:
+            // Uninstall's confirmed teardown: stop wanting the block, then push
+            // and confirm a settled clear WHILE the helper is still alive and
+            // registered, so a transient pmset failure or a SIGKILL-truncated
+            // shutdown handler cannot strand disablesleep=1 after bootout.
+            shuttingDown = true
+            let settled = await clearConfirmed()
+            await signal.nudge()
+            return settled
+                ? .ok
+                : .error(message: "sleep block did not settle after \(Self.clearAttempts) attempts")
         case .ping:
             return .ok
+        }
+    }
+
+    private func clearConfirmed() async -> Bool {
+        for attempt in 1 ... Self.clearAttempts {
+            let outcome = await pusher.push(blocked: false)
+            recordPush(outcome, desired: false)
+            if case .applied = outcome {
+                return true
+            }
+            Logger.daemon.error(
+                """
+                clear attempt \(attempt, privacy: .public) did not settle: \
+                \(String(describing: outcome), privacy: .public)
+                """
+            )
+            if attempt < Self.clearAttempts {
+                try? await Task.sleep(for: .milliseconds(100))
+            }
+        }
+        return false
+    }
+
+    /// Folds a helper push outcome into the daemon's view of the block: the
+    /// helper's `applied` verdict settles `appliedBlocked` on a reachable reply,
+    /// while a failed or unavailable push keeps the last known truth and clears
+    /// the pushed-desired latch so the next tick retries.
+    private func recordPush(_ outcome: BlockPushOutcome, desired: Bool) {
+        lastPushAt = clock.now
+        if helperLink != .dryRun {
+            switch outcome {
+            case .applied, .unsettled:
+                helperLink = .reachable
+            case .failed, .unavailable:
+                helperLink = .unreachable
+            }
+        }
+        switch outcome {
+        case let .applied(applied):
+            appliedBlocked = applied
+            pushedDesired = desired
+        case let .unsettled(applied, detail):
+            appliedBlocked = applied
+            pushedDesired = nil
+            Logger.daemon.error("sleep block unsettled: \(detail, privacy: .public)")
+        case let .failed(message):
+            // The push may still have applied; keep the last known truth and retry.
+            pushedDesired = nil
+            Logger.daemon.error("helper push failed: \(message, privacy: .public)")
+        case let .unavailable(message):
+            pushedDesired = nil
+            Logger.daemon.info("helper unavailable: \(message, privacy: .public)")
         }
     }
 
@@ -255,31 +320,7 @@ actor DaemonCore {
         let reconcile = desired && now.timeIntervalSince(lastPushAt) >= Self.reconcileSeconds
         guard edge || reconcile else { return }
         let outcome = await pusher.push(blocked: desired)
-        lastPushAt = clock.now
-        if helperLink != .dryRun {
-            switch outcome {
-            case .applied, .unsettled:
-                helperLink = .reachable
-            case .failed, .unavailable:
-                helperLink = .unreachable
-            }
-        }
-        switch outcome {
-        case let .applied(applied):
-            appliedBlocked = applied
-            pushedDesired = desired
-        case let .unsettled(applied, detail):
-            appliedBlocked = applied
-            pushedDesired = nil
-            Logger.daemon.error("sleep block unsettled: \(detail, privacy: .public)")
-        case let .failed(message):
-            // The push may still have applied; keep the last known truth and retry.
-            pushedDesired = nil
-            Logger.daemon.error("helper push failed: \(message, privacy: .public)")
-        case let .unavailable(message):
-            pushedDesired = nil
-            Logger.daemon.info("helper unavailable: \(message, privacy: .public)")
-        }
+        recordPush(outcome, desired: desired)
         if edge {
             let detail = "desired=\(desired) applied=\(appliedBlocked)"
                 + " sessions=\(decision.activeSessions.count)"
