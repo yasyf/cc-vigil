@@ -9,6 +9,7 @@ let package = Package(
         .library(name: "CCVigilShared", targets: ["CCVigilShared"]),
         .library(name: "CCVigilDaemonKit", targets: ["CCVigilDaemonKit"]),
         .library(name: "CCVigilCLIKit", targets: ["CCVigilCLIKit"]),
+        .library(name: "CCVigilAppKit", targets: ["CCVigilAppKit"]),
     ],
     dependencies: [
         // Revision-pinned: cc-transcript ships no semver tags for the Swift
@@ -37,6 +38,14 @@ let package = Package(
                 .product(name: "ArgumentParser", package: "swift-argument-parser"),
             ]
         ),
+        .target(
+            name: "CCVigilAppKit",
+            dependencies: [
+                "CCVigilShared",
+                "CCVigilDaemonKit",
+                "CCVigilCLIKit",
+            ]
+        ),
         .testTarget(name: "CCVigilSharedTests", dependencies: ["CCVigilShared"]),
         .testTarget(
             name: "CCVigilDaemonKitTests",
@@ -44,5 +53,6 @@ let package = Package(
             resources: [.copy("Fixtures")]
         ),
         .testTarget(name: "CCVigilCLIKitTests", dependencies: ["CCVigilCLIKit"]),
+        .testTarget(name: "CCVigilAppKitTests", dependencies: ["CCVigilAppKit"]),
     ]
 )

@@ -19,4 +19,10 @@ public enum ConfigLoader {
         let data = try Data(contentsOf: url)
         return try WireCodec.decodePayload(VigilConfig.self, from: data)
     }
+
+    public static func save(_ config: VigilConfig, to url: URL) throws {
+        let encoder = JSONEncoder()
+        encoder.outputFormatting = [.prettyPrinted, .sortedKeys]
+        try encoder.encode(config).write(to: url, options: .atomic)
+    }
 }

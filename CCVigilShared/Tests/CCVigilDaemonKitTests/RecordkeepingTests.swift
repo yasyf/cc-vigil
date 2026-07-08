@@ -92,3 +92,20 @@ func configLoaderFailsFastOnInvalidConfig(contents: String) throws {
         try ConfigLoader.load(url: url)
     }
 }
+
+@Test func configLoaderSaveRoundTripsNonDefaults() throws {
+    let directory = try temporaryDirectory()
+    defer { try? FileManager.default.removeItem(at: directory) }
+    let url = directory.appendingPathComponent("config.json")
+    let config = try VigilConfig(
+        batteryFloorPercent: 35,
+        thermalCutoutCelsius: 90,
+        activityWindowSeconds: 600,
+        hideMenuBarExtra: true
+    )
+    try ConfigLoader.save(config, to: url)
+    #expect(try ConfigLoader.load(url: url) == config)
+    let contents = try String(contentsOf: url, encoding: .utf8)
+    #expect(contents.contains("\"batteryFloorPercent\" : 35"))
+    #expect(contents.contains("\"hideMenuBarExtra\" : true"))
+}
