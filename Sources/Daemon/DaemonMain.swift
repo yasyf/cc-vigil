@@ -1,12 +1,19 @@
+import CCTranscript
 import CCVigilShared
 import Foundation
-
-// TODO: Depend on CCTranscript once its package ships — the transcript oracle
-// that computes real verdicts reads Claude Code sessions through it.
 
 @main
 enum DaemonMain {
     static func main() async throws {
+        // TODO: placeholder probe — the real transcript oracle replaces this.
+        if CommandLine.arguments.count > 1 {
+            let activity = try sessionActivity(path: CommandLine.arguments[1])
+            let epoch = activity.last_event_epoch().map(String.init) ?? "nil"
+            print(
+                "CCTranscript probe: is_waiting=\(activity.is_waiting()) "
+                    + "mid_tool=\(activity.mid_tool()) last_event_epoch=\(epoch)"
+            )
+        }
         print("CCVigilDaemon skeleton: verdict \(Verdict.allowSleep.rawValue); idling")
         while true {
             try await Task.sleep(for: .seconds(300))
