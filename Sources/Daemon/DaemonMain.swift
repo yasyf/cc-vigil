@@ -14,7 +14,9 @@ enum DaemonMain {
                     + "mid_tool=\(activity.mid_tool()) last_event_epoch=\(epoch)"
             )
         }
-        print("CCVigilDaemon skeleton: verdict \(Verdict.allowSleep.rawValue); idling")
+        let decision = OracleState(sessions: [], humanWaitHints: [:], claudeProcessesAlive: false)
+            .decision(config: .default, clock: SystemClock())
+        print("CCVigilDaemon skeleton: shouldBlock=\(decision.shouldBlock); idling")
         while true {
             try await Task.sleep(for: .seconds(300))
         }
