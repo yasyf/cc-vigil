@@ -71,6 +71,10 @@ public final class PmsetClamshellControl: ClamshellControlling {
         }
         guard exited.wait(timeout: .now() + timeoutSeconds) == .success else {
             process.terminate()
+            // Reap the terminated child before returning: a still-running pmset
+            // could otherwise finish after the next serialized `disablesleep`
+            // call and clobber it (re-strand disablesleep at 1).
+            _ = exited.wait(timeout: .now() + timeoutSeconds)
             return .watchdogTimedOut(stderr: drained(stderr))
         }
         guard let status = exitStatus.withLock({ $0 }) else {

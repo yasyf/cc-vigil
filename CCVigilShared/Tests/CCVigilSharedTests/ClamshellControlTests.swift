@@ -1,6 +1,7 @@
 import CCVigilShared
 import Dispatch
 import Foundation
+import os
 import Testing
 
 private final class ScriptedPmsetProcess: PmsetProcessHandle, @unchecked Sendable {
@@ -8,16 +9,23 @@ private final class ScriptedPmsetProcess: PmsetProcessHandle, @unchecked Sendabl
         case exit(status: Int32, stderrChunks: [String])
         case exitInBackground(status: Int32, afterMilliseconds: Int)
         case hang(stderrChunks: [String])
+        case hangUntilTerminated(status: Int32, exitAfterMilliseconds: Int)
         case failToLaunch
     }
 
     struct LaunchError: Error {}
 
     private let script: Script
+    private let capturedOnExit = OSAllocatedUnfairLock<(@Sendable (Int32) -> Void)?>(initialState: nil)
+    private let onExitDelivered = OSAllocatedUnfairLock(initialState: false)
     private(set) var terminated = false
 
     init(script: Script) {
         self.script = script
+    }
+
+    var onExitInvoked: Bool {
+        onExitDelivered.withLock { $0 }
     }
 
     func launch(
@@ -40,11 +48,20 @@ private final class ScriptedPmsetProcess: PmsetProcessHandle, @unchecked Sendabl
             for chunk in stderrChunks {
                 stderrSink(Data(chunk.utf8))
             }
+        case .hangUntilTerminated:
+            capturedOnExit.withLock { $0 = onExit }
         }
     }
 
     func terminate() {
         terminated = true
+        guard case let .hangUntilTerminated(status, delayMillis) = script,
+              let onExit = capturedOnExit.withLock({ $0 })
+        else { return }
+        DispatchQueue.global().asyncAfter(deadline: .now() + .milliseconds(delayMillis)) { [onExitDelivered] in
+            onExitDelivered.withLock { $0 = true }
+            onExit(status)
+        }
     }
 }
 
@@ -106,6 +123,15 @@ func pmsetRunResultSuccess(result: PmsetRunResult, expected: Bool) {
     let control = PmsetClamshellControl(launcher: launcher, timeoutSeconds: 0.05)
     #expect(control.setDisableSleep(true) == .watchdogTimedOut(stderr: "partial"))
     #expect(process.terminated == true)
+}
+
+@Test func clamshellReapsTerminatedChildBeforeReturning() {
+    let process = ScriptedPmsetProcess(script: .hangUntilTerminated(status: 0, exitAfterMilliseconds: 5))
+    let launcher = ScriptedPmsetLauncher(process: process)
+    let control = PmsetClamshellControl(launcher: launcher, timeoutSeconds: 0.2)
+    #expect(control.setDisableSleep(true) == .watchdogTimedOut(stderr: ""))
+    #expect(process.terminated == true)
+    #expect(process.onExitInvoked == true)
 }
 
 @Test func clamshellWaitsForConcurrentExitWithinWatchdog() {

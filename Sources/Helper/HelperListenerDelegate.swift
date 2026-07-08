@@ -52,16 +52,33 @@ final class HelperListenerDelegate: NSObject, NSXPCListenerDelegate, @unchecked 
     }
 
     private func deadManFired(generation: UInt64) {
-        guard deadMan.withLock({ $0.shouldClear(firedGeneration: generation) }), holdsAnyBlock else {
-            return
-        }
+        guard armedToClear(generation: generation) else { return }
         let grace = Int(DeadManSwitch.graceSeconds)
         Logger.helper.fault(
             "dead-man fired: no daemon reconnected within \(grace, privacy: .public)s; force-clearing"
         )
+        SelfHealingClear(
+            attemptClear: { [self] in attemptDeadManClear() },
+            isArmed: { [self] in armedToClear(generation: generation) },
+            scheduleRetry: { work in
+                DispatchQueue.global().asyncAfter(deadline: .now() + SelfHealingClear.retrySeconds) { work() }
+            }
+        ).fire()
+    }
+
+    private func armedToClear(generation: UInt64) -> Bool {
+        deadMan.withLock { $0.shouldClear(firedGeneration: generation) } && holdsAnyBlock
+    }
+
+    private func attemptDeadManClear() -> Bool {
         let report = blocker.setBlocked(false)
-        Logger.helper.info(
-            "dead-man clear: pmset=\(String(describing: report.pmset), privacy: .public)"
-        )
+        let pmset = String(describing: report.pmset)
+        if report.state.isSettled {
+            Logger.helper.info("dead-man clear confirmed: pmset=\(pmset, privacy: .public)")
+            return true
+        }
+        let detail = "retrying in \(Int(SelfHealingClear.retrySeconds))s: pmset=\(pmset)"
+        Logger.helper.fault("dead-man clear unconfirmed, \(detail, privacy: .public)")
+        return false
     }
 }
