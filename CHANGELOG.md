@@ -7,6 +7,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ## [Unreleased]
 
 ### Added
+- Test-only battery seam: when `CC_VIGIL_FAKE_BATTERY_FILE` names a file
+  (one line, `battery <percent>` or `ac <percent>`), the daemon polls it in
+  place of IOPS battery events — with a loud log — so headless end-to-end
+  runs can drive the battery cutout by hand.
+- README: Get started (Homebrew cask coming soon, build-from-source path,
+  first-run approvals), How it works (the transcript oracle vs hook
+  refcounts, sleep mechanics and their invariants), the configuration
+  table, and a CLI reference.
 - Initial scaffolding.
 - Xcode project skeleton (XcodeGen `project.yml`): the CCVigil menu-bar app with
   CCVigilDaemon (LaunchAgent), CCVigilHelper (LaunchDaemon), and the `cc-vigil`

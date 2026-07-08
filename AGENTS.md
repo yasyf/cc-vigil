@@ -10,13 +10,20 @@ cc-vigil/
 ├── .claude/            # Claude Code config — settings, guard-hook packs, jj config, skills
 ├── docs/               # Brand assets (mascot, banner, social card)
 ├── project.yml         # XcodeGen spec — source of truth for CCVigil.xcodeproj (generated, gitignored)
+├── Generated/          # XcodeGen-emitted Info.plists (gitignored)
 ├── Sources/
-│   ├── App/            # CCVigil — SwiftUI menu-bar app (LSUIElement, MenuBarExtra)
-│   ├── Daemon/         # CCVigilDaemon — LaunchAgent; transcript oracle + sleep assertions
-│   ├── Helper/         # CCVigilHelper — LaunchDaemon; privileged clamshell/power work
-│   └── CLI/            # cc-vigil — user-facing CLI, embedded at Contents/Helpers
+│   ├── App/            # CCVigil — SwiftUI menu-bar app (LSUIElement, MenuBarExtra), installer, XPC client
+│   ├── Daemon/         # CCVigilDaemon — LaunchAgent; oracle loop, power monitors, cli.sock server
+│   ├── Helper/         # CCVigilHelper — root LaunchDaemon; IOPM assertion + pmset edges, XPC auth
+│   └── CLI/            # cc-vigil — thin @main over CCVigilCLIKit, embedded at Contents/Helpers
 ├── Resources/          # launchd plists copied into the app bundle next to their binaries
-├── CCVigilShared/      # local SPM package all four targets depend on (+ its tests)
+├── CCVigilShared/      # local SPM package all four targets depend on
+│   ├── Sources/
+│   │   ├── CCVigilShared/    # pure policy core — oracle state, block policy, cutouts, holds, wire, hook installer
+│   │   ├── CCVigilDaemonKit/ # daemon adapters — cc-transcript FFI (the pin lives in Package.swift), scanner, event log, state, support paths
+│   │   ├── CCVigilCLIKit/    # CLI subcommands, socket client, renderers
+│   │   └── CCVigilAppKit/    # app policy — status view model, installer state machine, away digest
+│   └── Tests/          # one Swift Testing target per library, fixtures included
 ├── AGENTS.md           # This file — shared conventions
 ├── CLAUDE.md           # Claude-only rules; embeds AGENTS.md
 ├── STYLEGUIDE.md       # Concrete style rules
@@ -122,7 +129,7 @@ Reach for your **LSP** when the answer must be exhaustive/structural (findRefere
 
 **Build & run.** `xcodegen generate` emits `CCVigil.xcodeproj` from `project.yml`; build with `xcodebuild -project CCVigil.xcodeproj -scheme CCVigil build`. The CCVigil scheme builds the daemon, helper, and CLI too and embeds them in the app bundle (`Contents/Library/LaunchAgents`, `Contents/Library/LaunchDaemons`, `Contents/Helpers`).
 
-**Testing.** Tests live in `CCVigilShared/Tests/` and use Swift Testing — free `@Test` functions with `#expect`/`#require` against specific expected values, parameterized via `@Test(arguments:)`. Run them with `swift test --package-path CCVigilShared`. Mock the boundaries the code talks to (filesystem, clock, power APIs) and leave the function under test real.
+**Testing.** Tests live in `CCVigilShared/Tests/` and use Swift Testing — free `@Test` functions with `#expect`/`#require` against specific expected values, parameterized via `@Test(arguments:)`. Run them with `swift test --package-path CCVigilShared`. Mock the boundaries the code talks to (filesystem, clock, power APIs) and leave the function under test real. Tests never touch the real machine: never write `~/.claude/settings.json`, never register launchd services, never run `pmset` or take IOPM assertions for real — that coverage lives on the manual release checklist. Reading `~/.claude/projects` read-only is allowed. The `DaemonRoundTripTests` integration suite drives the xcodebuild Debug products (`-derivedDataPath build`) and skips visibly when they haven't been built. For headless end-to-end runs, `CC_VIGIL_FAKE_BATTERY_FILE=<path>` makes the daemon poll that file (one line, `battery <percent>` or `ac <percent>`) in place of IOPS so the battery cutout can be driven by hand; the daemon logs loudly when the seam is active.
 
 **XcodeBuildMCP.** If using XcodeBuildMCP, use the installed `xcodebuildmcp-cli` skill before calling XcodeBuildMCP tools.
 
