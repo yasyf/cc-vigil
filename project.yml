@@ -180,7 +180,7 @@ targets:
       base:
         PRODUCT_BUNDLE_IDENTIFIER: dev.yasyf.cc-vigil.helper
         CREATE_INFOPLIST_SECTION_IN_BINARY: "YES"
-        CC_VIGIL_AUTHORIZED_CLIENT: identifier "dev.yasyf.cc-vigil"
+        CC_VIGIL_AUTHORIZED_CLIENT: identifier "dev.yasyf.cc-vigil.daemon"
       configs:
         Debug:
           # Ad-hoc/dev builds: CallerVerifier may accept the daemon by signing
@@ -188,7 +188,7 @@ targets:
           # team-id read instead of accepting identifier-only.
           SWIFT_ACTIVE_COMPILATION_CONDITIONS: $(inherited) CCVIGIL_ADHOC_HELPER_AUTH
         Release:
-          CC_VIGIL_AUTHORIZED_CLIENT: identifier "dev.yasyf.cc-vigil" and anchor apple generic and certificate leaf[subject.OU] = "$(DEVELOPMENT_TEAM)"
+          CC_VIGIL_AUTHORIZED_CLIENT: identifier "dev.yasyf.cc-vigil.daemon" and anchor apple generic and certificate leaf[subject.OU] = "$(DEVELOPMENT_TEAM)"
     dependencies:
       - package: CCVigilShared
 
