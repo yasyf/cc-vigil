@@ -22,6 +22,7 @@ actor DaemonCore {
     private var hints = HintTracker()
     private var holds: HoldRegistry
     private var latch: CutoutLatch
+    private var helperLink: HelperLink
     private var pausedUntil: Date?
     private var lidClosed = false
     private var battery: BatteryReading?
@@ -39,6 +40,7 @@ actor DaemonCore {
         transcriptsRoot: URL,
         processLister: any ClaudeProcessListing,
         pusher: any BlockPushing,
+        helperLink: HelperLink,
         eventLog: EventLog,
         stateURL: URL,
         signal: NudgeSignal,
@@ -53,6 +55,7 @@ actor DaemonCore {
         oracle = TranscriptOracle(root: transcriptsRoot)
         self.processLister = processLister
         self.pusher = pusher
+        self.helperLink = helperLink
         self.eventLog = eventLog
         self.stateURL = stateURL
         self.signal = signal
@@ -247,6 +250,14 @@ actor DaemonCore {
         guard edge || reconcile else { return }
         let outcome = await pusher.push(blocked: desired)
         lastPushAt = clock.now
+        if helperLink != .dryRun {
+            switch outcome {
+            case .applied, .unsettled:
+                helperLink = .reachable
+            case .failed, .unavailable:
+                helperLink = .unreachable
+            }
+        }
         switch outcome {
         case let .applied(applied):
             appliedBlocked = applied
@@ -283,6 +294,7 @@ actor DaemonCore {
         StatusReport(
             shouldBlock: lastDesired,
             blockApplied: appliedBlocked,
+            helper: helperLink,
             activeSessions: lastDecision.activeSessions,
             holds: holds.active(clock: clock),
             latchedCutouts: latch.latched.sorted { $0.rawValue < $1.rawValue },

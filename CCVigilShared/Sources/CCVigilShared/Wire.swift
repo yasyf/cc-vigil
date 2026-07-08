@@ -127,9 +127,17 @@ extension WireRequest: Codable {
     }
 }
 
+public enum HelperLink: String, Codable, Equatable, Sendable {
+    case dryRun = "dry-run"
+    case unknown
+    case reachable
+    case unreachable
+}
+
 public struct StatusReport: Codable, Equatable, Sendable {
     public let shouldBlock: Bool
     public let blockApplied: Bool
+    public let helper: HelperLink
     public let activeSessions: [ActiveSession]
     public let holds: [Hold]
     public let latchedCutouts: [CutoutKind]
@@ -138,6 +146,7 @@ public struct StatusReport: Codable, Equatable, Sendable {
     public init(
         shouldBlock: Bool,
         blockApplied: Bool,
+        helper: HelperLink,
         activeSessions: [ActiveSession],
         holds: [Hold],
         latchedCutouts: [CutoutKind],
@@ -145,6 +154,7 @@ public struct StatusReport: Codable, Equatable, Sendable {
     ) {
         self.shouldBlock = shouldBlock
         self.blockApplied = blockApplied
+        self.helper = helper
         self.activeSessions = activeSessions
         self.holds = holds
         self.latchedCutouts = latchedCutouts

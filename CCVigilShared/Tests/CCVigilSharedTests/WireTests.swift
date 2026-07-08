@@ -141,6 +141,7 @@ func requestRoundTripsThroughFrame(request: WireRequest) throws {
     let report = StatusReport(
         shouldBlock: true,
         blockApplied: true,
+        helper: .dryRun,
         activeSessions: [ActiveSession(path: "/t/s.jsonl", reasons: [.recentActivity, .waiting])],
         holds: [Hold(
             key: "k",
@@ -153,7 +154,8 @@ func requestRoundTripsThroughFrame(request: WireRequest) throws {
         pausedUntil: nil
     )
     let expected = #"{"result":"status","status":{"activeSessions":[{"path":"/t/s.jsonl","#
-        + #""reasons":["recent-activity","waiting"]}],"blockApplied":true,"holds":[{"createdAt":1800000000,"#
+        + #""reasons":["recent-activity","waiting"]}],"blockApplied":true,"helper":"dry-run","#
+        + #""holds":[{"createdAt":1800000000,"#
         + #""key":"k","reason":"r","ttlSeconds":600}],"latchedCutouts":["battery"],"shouldBlock":true}}"#
     #expect(try json(of: .status(report)) == expected)
 }
@@ -162,6 +164,7 @@ func requestRoundTripsThroughFrame(request: WireRequest) throws {
     let report = StatusReport(
         shouldBlock: false,
         blockApplied: false,
+        helper: .reachable,
         activeSessions: [],
         holds: [Hold(
             key: "k",

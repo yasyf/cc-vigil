@@ -23,6 +23,7 @@ enum DaemonMain {
             transcriptsRoot: options.transcriptsRoot,
             processLister: SysctlClaudeProcessLister(),
             pusher: pusher,
+            helperLink: options.dryRun ? .dryRun : .unknown,
             eventLog: EventLog(url: startup.paths.eventsURL),
             stateURL: startup.paths.stateURL,
             signal: signal,
