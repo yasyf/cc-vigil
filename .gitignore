@@ -20,6 +20,7 @@ CCVigil.xcodeproj/
 Generated/
 DerivedData/
 build/
+build-release/
 *.xcuserstate
 xcuserdata/
 

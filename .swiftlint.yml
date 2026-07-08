@@ -14,3 +14,4 @@ excluded:
   - DerivedData
   - Generated
   - build
+  - build-release

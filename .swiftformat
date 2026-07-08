@@ -4,7 +4,7 @@
 # --swiftversion is the language mode, not the tools version.
 --swiftversion 6.0
 --indent 4
---exclude build,CCVigilShared/.build,Generated
+--exclude build,build-release,CCVigilShared/.build,Generated
 # CI's swiftformat enables these by default; pin them on so local lint agrees.
 --enable redundantSendable
 --enable preferCountWhere
