@@ -7,6 +7,7 @@ struct DaemonOptions {
     let dryRun: Bool
     let transcriptsRoot: URL
     let supportDirectory: URL
+    let fakeBatteryFile: URL?
 
     static func parse(arguments: [String], environment: [String: String]) -> DaemonOptions {
         var dryRun = environment["CC_VIGIL_DRY_RUN"] == "1"
@@ -16,6 +17,8 @@ struct DaemonOptions {
         var supportDirectory = environment["CC_VIGIL_SUPPORT_DIR"]
             .map { URL(fileURLWithPath: $0, isDirectory: true) }
             ?? SupportPaths.defaultDirectory
+        let fakeBatteryFile = environment[FakeBatteryFile.environmentKey]
+            .map { URL(fileURLWithPath: $0) }
         var iterator = arguments.makeIterator()
         while let argument = iterator.next() {
             switch argument {
@@ -32,7 +35,8 @@ struct DaemonOptions {
         return DaemonOptions(
             dryRun: dryRun,
             transcriptsRoot: transcriptsRoot,
-            supportDirectory: supportDirectory
+            supportDirectory: supportDirectory,
+            fakeBatteryFile: fakeBatteryFile
         )
     }
 

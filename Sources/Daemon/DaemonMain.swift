@@ -16,6 +16,11 @@ enum DaemonMain {
         let broadcaster = options.dryRun ? nil : StatusBroadcaster()
         let helperClient = HelperClient()
         let pusher: any BlockPushing = options.dryRun ? LogOnlyBlockPusher() : helperClient
+        let batterySampler: @Sendable () -> BatteryReading? = if let fakeBatteryFile = options.fakeBatteryFile {
+            { FakeBatteryFeed.read(url: fakeBatteryFile) }
+        } else {
+            { BatteryMonitor.sample() }
+        }
 
         let core = DaemonCore(
             config: startup.config,
@@ -29,7 +34,7 @@ enum DaemonMain {
             signal: signal,
             broadcaster: broadcaster,
             thermalReader: SMCThermalReader(),
-            batterySampler: { BatteryMonitor.sample() },
+            batterySampler: batterySampler,
             restoredHolds: startup.holds,
             restoredPausedUntil: startup.pausedUntil
         )
@@ -117,10 +122,23 @@ enum DaemonMain {
         }
 
         let monitorQueue = DispatchQueue(label: "dev.yasyf.cc-vigil.monitors")
-        let batteryMonitor = BatteryMonitor { reading in
-            Task { await core.updateBattery(reading) }
+        let batterySource: AnyObject
+        if let fakeBatteryFile = options.fakeBatteryFile {
+            Logger.daemon.error(
+                "fake battery seam active (test-only): \(fakeBatteryFile.path, privacy: .public)"
+            )
+            let feed = FakeBatteryFeed(url: fakeBatteryFile, queue: monitorQueue) { reading in
+                Task { await core.updateBattery(reading) }
+            }
+            feed.start()
+            batterySource = feed
+        } else {
+            let batteryMonitor = BatteryMonitor { reading in
+                Task { await core.updateBattery(reading) }
+            }
+            batteryMonitor.start()
+            batterySource = batteryMonitor
         }
-        batteryMonitor.start()
         let lidMonitor = LidMonitor(queue: monitorQueue) { closed in
             Task { await core.updateLid(closed: closed) }
         }
@@ -132,7 +150,7 @@ enum DaemonMain {
         }
         wakeMonitor.start(queue: monitorQueue)
 
-        var services: [AnyObject] = [socketServer, batteryMonitor, wakeMonitor]
+        var services: [AnyObject] = [socketServer, batterySource, wakeMonitor]
         if let lidMonitor {
             services.append(lidMonitor)
         }
