@@ -13,5 +13,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   CLI embedded in its bundle, all sharing the local CCVigilShared package.
 - CI on macos-26: swiftformat/swiftlint, `xcodebuild` build of the CCVigil
   scheme, and `swift test` for CCVigilShared.
+- CCTranscript oracle dependency (revision-pinned SwiftPM git package from
+  [cc-transcript](https://github.com/yasyf/cc-transcript)) wired into
+  CCVigilDaemon, with a placeholder `sessionActivity` probe.
 
 [Unreleased]: https://github.com/yasyf/cc-vigil/commits/main
