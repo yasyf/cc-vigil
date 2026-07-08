@@ -1,0 +1,146 @@
+# XcodeGen spec for cc-vigil — the source of truth for CCVigil.xcodeproj.
+# `xcodegen generate` emits CCVigil.xcodeproj plus the Info.plists under
+# Generated/ — all gitignored. Modeled on claude-pool's widget/project.yml.
+#
+# Signing: ad-hoc (CODE_SIGN_IDENTITY "-") for local and CI builds. Release
+# signing (Developer ID, hardened runtime, the helper's SMAuthorizedClients
+# team pin) comes from the release pipeline's xcodebuild command line.
+name: CCVigil
+options:
+  bundleIdPrefix: dev.yasyf
+  deploymentTarget:
+    macOS: "14.0"
+  createIntermediateGroups: true
+
+packages:
+  CCVigilShared:
+    path: CCVigilShared
+
+settings:
+  base:
+    SWIFT_VERSION: "6.0"
+    SWIFT_STRICT_CONCURRENCY: complete
+    CODE_SIGN_STYLE: Manual
+    CODE_SIGN_IDENTITY: "-"
+    PRODUCT_NAME: $(TARGET_NAME)
+    CURRENT_PROJECT_VERSION: 1
+    MARKETING_VERSION: 0.1.0
+
+targets:
+  CCVigil:
+    type: application
+    platform: macOS
+    sources:
+      - path: Sources/App
+      # launchd job definitions ride inside the bundle so SMAppService can
+      # register them by plist name; each sits next to the binary it launches.
+      - path: Resources/LaunchAgents/dev.yasyf.cc-vigil.daemon.plist
+        buildPhase:
+          copyFiles:
+            destination: wrapper
+            subpath: Contents/Library/LaunchAgents
+      - path: Resources/LaunchDaemons/dev.yasyf.cc-vigil.helper.plist
+        buildPhase:
+          copyFiles:
+            destination: wrapper
+            subpath: Contents/Library/LaunchDaemons
+    info:
+      path: Generated/App-Info.plist
+      properties:
+        CFBundleDisplayName: cc-vigil
+        # XcodeGen writes literal values into the generated plist; these $(…)
+        # references keep command-line MARKETING_VERSION/CURRENT_PROJECT_VERSION
+        # overrides flowing into the bundle at release time.
+        CFBundleShortVersionString: $(MARKETING_VERSION)
+        CFBundleVersion: $(CURRENT_PROJECT_VERSION)
+        LSUIElement: true # menu-bar app: no Dock icon, no app menu
+        LSApplicationCategoryType: public.app-category.developer-tools
+    settings:
+      base:
+        PRODUCT_BUNDLE_IDENTIFIER: dev.yasyf.cc-vigil
+    dependencies:
+      - package: CCVigilShared
+      - target: CCVigilDaemon
+        embed: true
+        codeSign: true
+        copy:
+          destination: wrapper
+          subpath: Contents/Library/LaunchAgents
+      - target: CCVigilHelper
+        embed: true
+        codeSign: true
+        copy:
+          destination: wrapper
+          subpath: Contents/Library/LaunchDaemons
+      # Contents/Helpers, NOT Contents/MacOS — auxiliary executables live in
+      # Helpers, and MacOS risks a case-insensitive collision with the app binary.
+      - target: cc-vigil
+        embed: true
+        codeSign: true
+        copy:
+          destination: wrapper
+          subpath: Contents/Helpers
+
+  CCVigilDaemon:
+    # LaunchAgent (per-user): the transcript oracle + sleep-assertion holder.
+    type: tool
+    platform: macOS
+    sources:
+      - path: Sources/Daemon
+    info:
+      # Embedded into the binary (__TEXT,__info_plist): a bare executable has no
+      # bundle, so launchd and SMAppService learn its identity from the section.
+      path: Generated/Daemon-Info.plist
+      properties:
+        CFBundleShortVersionString: $(MARKETING_VERSION)
+        CFBundleVersion: $(CURRENT_PROJECT_VERSION)
+    settings:
+      base:
+        PRODUCT_BUNDLE_IDENTIFIER: dev.yasyf.cc-vigil.daemon
+        CREATE_INFOPLIST_SECTION_IN_BINARY: "YES"
+    dependencies:
+      - package: CCVigilShared
+
+  CCVigilHelper:
+    # LaunchDaemon (system, root): privileged clamshell/power work lands here.
+    type: tool
+    platform: macOS
+    sources:
+      - path: Sources/Helper
+    info:
+      path: Generated/Helper-Info.plist
+      properties:
+        CFBundleShortVersionString: $(MARKETING_VERSION)
+        CFBundleVersion: $(CURRENT_PROJECT_VERSION)
+        # Placeholder designated requirement — release signing replaces TEAMID
+        # with the real team identifier.
+        SMAuthorizedClients:
+          - identifier "dev.yasyf.cc-vigil" and anchor apple generic and certificate leaf[subject.OU] = "TEAMID"
+    settings:
+      base:
+        PRODUCT_BUNDLE_IDENTIFIER: dev.yasyf.cc-vigil.helper
+        CREATE_INFOPLIST_SECTION_IN_BINARY: "YES"
+    dependencies:
+      - package: CCVigilShared
+
+  cc-vigil:
+    # The user-facing CLI, embedded at Contents/Helpers inside the app bundle.
+    type: tool
+    platform: macOS
+    sources:
+      - path: Sources/CLI
+    settings:
+      base:
+        PRODUCT_BUNDLE_IDENTIFIER: dev.yasyf.cc-vigil.cli
+    dependencies:
+      - package: CCVigilShared
+
+schemes:
+  CCVigil:
+    build:
+      targets:
+        CCVigil: all
+    run:
+      config: Debug
+    archive:
+      config: Release

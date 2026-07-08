@@ -1,0 +1,14 @@
+# SwiftLint — default rules plus the STYLEGUIDE's force-unwrap ban. Formatting
+# belongs to SwiftFormat; keep this config minimal, and let violations surface
+# as warnings (nothing here blocks a commit or fails CI on style alone).
+opt_in_rules:
+  - force_unwrapping
+disabled_rules:
+  - todo # the STYLEGUIDE sanctions TODO comments; the default rule would flag every one
+  - trailing_comma # SwiftFormat owns comma placement; this rule fights its default
+excluded:
+  - .build
+  - CCVigilShared/.build
+  - DerivedData
+  - Generated
+  - build

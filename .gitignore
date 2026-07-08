@@ -14,3 +14,18 @@
 # Python bytecode (guard hooks are Python even in non-Python repos)
 __pycache__/
 *.py[cod]
+
+# Xcode — CCVigil.xcodeproj and Generated/ are emitted by `xcodegen generate`
+CCVigil.xcodeproj/
+Generated/
+DerivedData/
+build/
+*.xcuserstate
+xcuserdata/
+
+# SwiftPM
+.build/
+.swiftpm/
+
+# XcodeBuildMCP (local session state: machine-specific device/simulator IDs)
+.xcodebuildmcp/
