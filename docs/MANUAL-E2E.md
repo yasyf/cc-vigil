@@ -297,7 +297,10 @@ launchctl kill SIGKILL "gui/$(id -u)/dev.yasyf.cc-vigil.daemon"
 **Expect.** For ~60 s the block persists (helper still holds it). At the 60 s
 dead-man grace, the helper force-clears: 0 assertions, SleepDisabled 0.
 Helper log: `dead-man armed …`, then `dead-man fired: no daemon reconnected
-within 60.0s; force-clearing`.
+within 60.0s; force-clearing`, then `dead-man clear confirmed`. The clear is
+self-healing: if `pmset` does not confirm, the helper logs `dead-man clear
+unconfirmed, retrying …` and re-attempts every 5 s until it confirms, so a
+failed clear is never terminal (a reconnect cancels the pending retries).
 
 **Verify and recover.**
 
