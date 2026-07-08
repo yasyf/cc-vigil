@@ -71,4 +71,24 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   symlink-resolved binary path. An integration test spawns the dry-run
   daemon and proves the wire protocol end to end over `cli.sock`.
 
+- The CCVigil menu-bar app (SwiftUI): a MenuBarExtra with distinct icon
+  states (idle/blocking/latched/paused, plus daemon-unreachable), a menu
+  showing why the Mac is held awake (session names + reasons from the XPC
+  status snapshot), a 1-hour pause toggle, a Keep Awake hold submenu
+  (30m/2h/8h with release items), and a while-you-were-away digest of
+  `events.log` since the menu was last opened. Status arrives over the
+  daemon's app XPC service with generation-counted reconnects; control ops
+  ride `cli.sock`. Settings cover the battery-floor/thermal-cutout sliders,
+  activity window, hide-menu-bar-icon (persisted in the shared
+  `config.json`, with a debounced daemon kickstart so cutout changes take
+  effect), launch-at-login, open-events-log, service repair, and a full
+  uninstall (hooks, services, CLI symlink). A first-run installer walks a
+  tested state machine: Gatekeeper translocation guard, SMAppService
+  agent+daemon registration with a one-shot unregister/register remediation
+  on "Operation not permitted", Login Items approval with 2s status polling,
+  hook install via the bundled CLI, and a `/usr/local/bin` CLI symlink
+  falling back to `~/.local/bin`. App-side policy (status view model,
+  installer state machine, symlinker, away digest) lives in the new
+  CCVigilAppKit library under `swift test`.
+
 [Unreleased]: https://github.com/yasyf/cc-vigil/commits/main

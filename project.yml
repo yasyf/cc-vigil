@@ -63,6 +63,13 @@ targets:
         PRODUCT_BUNDLE_IDENTIFIER: dev.yasyf.cc-vigil
     dependencies:
       - package: CCVigilShared
+        product: CCVigilShared
+      - package: CCVigilShared
+        product: CCVigilAppKit
+      # CCVigilCLIKit supplies SocketClient: menu pause/hold ops ride the
+      # daemon's CLI socket (the app XPC channel is read-only status).
+      - package: CCVigilShared
+        product: CCVigilCLIKit
       - target: CCVigilDaemon
         embed: true
         codeSign: true
