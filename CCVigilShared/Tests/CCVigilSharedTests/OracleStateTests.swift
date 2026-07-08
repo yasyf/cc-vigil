@@ -127,6 +127,80 @@ func oracleHumanWaitHintDiscount(lastEventEpoch: Int64?, hintEpoch: Int64, expec
     #expect(decision.discounts.isEmpty)
 }
 
+private func background(_ id: String = "b1") -> PendingItem {
+    PendingItem(toolUseID: id, name: "Bash", kind: .background)
+}
+
+/// A live run_in_background Bash keeps the session active even after Claude Code
+/// fires its idle Notification: the hint is newer than the frozen transcript
+/// epoch, but machine-driven work outranks it. Past the activity window so the
+/// hold rests on `.waiting` alone, not lingering recent activity (issue #7).
+@Test func oracleLiveBackgroundJobOutranksHumanWaitHint() {
+    let decision = decide(
+        [probe(isWaiting: true, lastEventEpoch: now - 1000, pending: [background()])],
+        hints: ["/t/session.jsonl": now]
+    )
+    #expect(decision == BlockDecision(
+        shouldBlock: true,
+        activeSessions: [ActiveSession(path: "/t/session.jsonl", reasons: [.waiting])],
+        discounts: []
+    ))
+}
+
+@Test func oracleLivePendingWorkflowOutranksHumanWaitHint() {
+    let decision = decide(
+        [probe(isWaiting: true, lastEventEpoch: now - 1000, pending: [asyncPending(.pendingAsyncWorkflow)])],
+        hints: ["/t/session.jsonl": now]
+    )
+    #expect(decision == BlockDecision(
+        shouldBlock: true,
+        activeSessions: [ActiveSession(path: "/t/session.jsonl", reasons: [.waiting])],
+        discounts: []
+    ))
+}
+
+/// A Monitor (or ScheduleWakeup/SendMessage/TeamCreate) is a machine-driven wait
+/// that never advances the transcript: a session parked on a Monitor watching a
+/// background job is the issue-#7 scenario via `.waitingTool`, so the hint must
+/// not discount it either.
+@Test func oracleLiveWaitingToolOutranksHumanWaitHint() {
+    let pending = [PendingItem(toolUseID: "m1", name: "Monitor", kind: .waitingTool)]
+    let decision = decide(
+        [probe(isWaiting: true, lastEventEpoch: now - 1000, pending: pending)],
+        hints: ["/t/session.jsonl": now]
+    )
+    #expect(decision == BlockDecision(
+        shouldBlock: true,
+        activeSessions: [ActiveSession(path: "/t/session.jsonl", reasons: [.waiting])],
+        discounts: []
+    ))
+}
+
+/// A parked prompt carries no machine-driven pending work, so the idle hint still
+/// lets the Mac sleep.
+@Test func oracleParkedSessionStillDiscountsOnHumanWaitHint() {
+    let decision = decide(
+        [probe(lastEventEpoch: now - 50)],
+        hints: ["/t/session.jsonl": now]
+    )
+    #expect(decision.shouldBlock == false)
+    #expect(decision.activeSessions.isEmpty)
+    #expect(decision.discounts == [SessionDiscount(path: "/t/session.jsonl", reason: .humanWaitHint)])
+}
+
+/// The gate demands the machine job be live: once it ages out past the max-age
+/// backstop the stale-activity discount fires despite the hint, so a leaked
+/// background job never pins sleep open forever.
+@Test func oracleStaleBackgroundJobDiscountsDespiteHumanWaitHint() {
+    let decision = decide(
+        [probe(isWaiting: true, lastEventEpoch: now - 90000, pending: [background()])],
+        hints: ["/t/session.jsonl": now]
+    )
+    #expect(decision.shouldBlock == false)
+    #expect(decision.activeSessions.isEmpty)
+    #expect(decision.discounts == [SessionDiscount(path: "/t/session.jsonl", reason: .staleActivityMaxAge)])
+}
+
 @Test(arguments: [
     (Int64(43200), true),
     (Int64(43201), false),

@@ -79,7 +79,7 @@ import Testing
     let collection = oracle.collect(config: .default, clock: clock)
     var tracker = HintTracker()
     tracker.apply(
-        NudgePayload(sessionId: "abc-123", hookEvent: "Notification"),
+        NudgePayload(sessionId: "abc-123", hookEvent: "Notification", notificationKind: "idle_prompt"),
         now: Date(timeIntervalSince1970: TimeInterval(fixtureLastEventEpoch + 30))
     )
     let decision = OracleState(

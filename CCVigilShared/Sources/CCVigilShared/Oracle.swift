@@ -126,7 +126,18 @@ public struct OracleState: Equatable, Sendable {
         now: Int64,
         config: VigilConfig
     ) -> (reasons: [ActivityReason], discount: DiscountReason?) {
-        if let hint = humanWaitHints[session.sessionPath], hint > session.lastEventEpoch ?? .min {
+        // A live machine-driven wait — a run_in_background Bash, an async Task or
+        // Workflow, a subagentless Agent, or a waiting tool like Monitor —
+        // outranks the human-wait hint. Claude
+        // Code fires its idle "waiting for input" Notification the moment such a
+        // job detaches from the turn, yet the transcript never advances while it
+        // runs, so the block must hold until the job completes or ages out past
+        // the max-age backstop. The hint therefore only discounts a session with
+        // no machine work pending: a genuinely parked prompt (AskUserQuestion and
+        // ExitPlanMode never register as pending) or a leaked session the
+        // stale-activity backstop already owns.
+        let hint = humanWaitHints[session.sessionPath]
+        if !hasMachineDrivenPending(session), let hint, hint > session.lastEventEpoch ?? .min {
             return ([], .humanWaitHint)
         }
         var reasons: [ActivityReason] = []
@@ -167,5 +178,13 @@ public struct OracleState: Equatable, Sendable {
 
     private func hasOnlyPendingAsync(_ session: SessionProbe) -> Bool {
         !session.pending.isEmpty && session.pending.allSatisfy(\.kind.isPendingAsync)
+    }
+
+    private static let machineDrivenKinds: Set<PendingKind> = [
+        .waitingTool, .background, .pendingAsyncTask, .pendingAsyncWorkflow, .subagentlessTask,
+    ]
+
+    private func hasMachineDrivenPending(_ session: SessionProbe) -> Bool {
+        session.pending.contains { Self.machineDrivenKinds.contains($0.kind) }
     }
 }
