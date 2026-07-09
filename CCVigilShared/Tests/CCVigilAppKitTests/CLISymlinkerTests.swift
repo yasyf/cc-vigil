@@ -9,6 +9,7 @@ private struct FakeFSError: Error, CustomStringConvertible {
 private final class FakeSymlinkFileSystem: SymlinkFileSystem, @unchecked Sendable {
     var existing: Set<String>
     var symlinks: [String: String]
+    var resolvedPaths: [String: String] = [:]
     var undeletable: Set<String> = []
     var unwritableDirectories: Set<String> = []
     var uncreatableDirectories: Set<String> = []
@@ -25,6 +26,10 @@ private final class FakeSymlinkFileSystem: SymlinkFileSystem, @unchecked Sendabl
 
     func symlinkDestination(atPath path: String) -> String? {
         symlinks[path]
+    }
+
+    func resolvedPath(_ path: String) -> String {
+        resolvedPaths[path] ?? path
     }
 
     func createDirectory(atPath path: String) throws {
@@ -133,4 +138,23 @@ private let directories = ["/usr/local/bin", "/Users/ada/.local/bin"]
     )
     #expect(removed == ["/usr/local/bin/cc-vigil"])
     #expect(fileSystem.symlinks["/Users/ada/.local/bin/cc-vigil"] == "/opt/homebrew/bin/cc-vigil")
+}
+
+@Test func removeLinksResolvesTheBundlePathBeforeMatching() throws {
+    // Install writes the link target through the resolved bundle path, so a bundle
+    // under a symlinked directory has a resolved target that the raw bundle path
+    // is not a prefix of. Uninstall must resolve the bundle path the same way.
+    let resolvedCLIPath = "/Volumes/Data/Apps/CCVigil.app/Contents/Helpers/cc-vigil"
+    let fileSystem = FakeSymlinkFileSystem(
+        existing: ["/usr/local/bin"],
+        symlinks: ["/usr/local/bin/cc-vigil": resolvedCLIPath]
+    )
+    fileSystem.resolvedPaths = ["/Users/ada/Apps/CCVigil.app": "/Volumes/Data/Apps/CCVigil.app"]
+    let removed = try CLISymlinker.removeLinks(
+        pointingInto: "/Users/ada/Apps/CCVigil.app",
+        directories: directories,
+        fileSystem: fileSystem
+    )
+    #expect(removed == ["/usr/local/bin/cc-vigil"])
+    #expect(fileSystem.symlinks["/usr/local/bin/cc-vigil"] == nil)
 }

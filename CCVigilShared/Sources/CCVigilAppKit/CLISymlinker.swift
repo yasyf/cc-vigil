@@ -4,6 +4,8 @@ public protocol SymlinkFileSystem: Sendable {
     /// True when a filesystem entry exists at the path, including a dangling symlink.
     func itemExists(atPath path: String) -> Bool
     func symlinkDestination(atPath path: String) -> String?
+    /// Resolves symlinks in the path the same way install writes link targets.
+    func resolvedPath(_ path: String) -> String
     func createDirectory(atPath path: String) throws
     func removeItem(atPath path: String) throws
     func createSymbolicLink(atPath path: String, withDestinationPath destination: String) throws
@@ -18,6 +20,10 @@ public struct SystemSymlinkFileSystem: SymlinkFileSystem {
 
     public func symlinkDestination(atPath path: String) -> String? {
         try? FileManager.default.destinationOfSymbolicLink(atPath: path)
+    }
+
+    public func resolvedPath(_ path: String) -> String {
+        URL(fileURLWithPath: path).resolvingSymlinksInPath().path
     }
 
     public func createDirectory(atPath path: String) throws {
@@ -69,11 +75,12 @@ public enum CLISymlinker {
         directories: [String],
         fileSystem: some SymlinkFileSystem
     ) throws -> [String] {
+        let resolvedBundlePath = fileSystem.resolvedPath(bundlePath)
         var removed: [String] = []
         for directory in directories {
             let destination = "\(directory)/\(binaryName)"
             guard let target = fileSystem.symlinkDestination(atPath: destination),
-                  target.hasPrefix(bundlePath)
+                  target.hasPrefix(resolvedBundlePath)
             else { continue }
             try fileSystem.removeItem(atPath: destination)
             removed.append(destination)
