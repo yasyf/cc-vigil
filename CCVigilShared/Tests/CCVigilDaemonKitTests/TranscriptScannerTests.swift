@@ -33,6 +33,16 @@ import Testing
     #expect(entries.map(\.path) == [real.resolvingSymlinksInPath().path])
 }
 
+@Test func excludesSubagentSidechainTranscripts() throws {
+    let transcripts = try TranscriptsRoot()
+    defer { transcripts.tearDown() }
+    let session = try transcripts.install(fixture: "active-recent", as: "session.jsonl", in: "p1")
+    try transcripts.install(fixture: "active-recent", as: "agent-x.jsonl", in: "p1/session/subagents")
+
+    let entries = TranscriptScanner(root: transcripts.root).entries()
+    #expect(entries.map(\.path) == [session.resolvingSymlinksInPath().path])
+}
+
 @Test func missingRootScansToEmpty() {
     let scanner = TranscriptScanner(root: URL(fileURLWithPath: "/nonexistent/never/projects"))
     #expect(scanner.entries() == [])

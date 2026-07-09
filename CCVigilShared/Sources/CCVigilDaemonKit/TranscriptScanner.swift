@@ -17,6 +17,10 @@ public struct TranscriptScanner: Sendable {
         var byRealPath: [String: TranscriptFileEntry] = [:]
         for case let url as URL in enumerator {
             guard url.pathExtension == "jsonl" else { continue }
+            // Subagent sidechains (<session>/subagents/agent-*.jsonl) never open a
+            // turn on their own; the parent transcript carries the authoritative
+            // pending-async state with a real completion marker.
+            guard !url.pathComponents.contains("subagents") else { continue }
             let realPath = url.resolvingSymlinksInPath().path
             guard byRealPath[realPath] == nil else { continue }
             // A transcript can vanish between listing and stat; skip it.
