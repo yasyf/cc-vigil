@@ -137,7 +137,7 @@ import Testing
     #expect(fresh.probes == first.probes)
 }
 
-@Test func probeFailuresAreLoudOnceAndSkipTheSession() throws {
+@Test func probeFailuresAreLoudOnceAndFallBackToARecencyProbe() throws {
     let transcripts = try TranscriptsRoot()
     defer { transcripts.tearDown() }
     let bad = try transcripts.install(fixture: "malformed", as: "bad.jsonl")
@@ -146,7 +146,7 @@ import Testing
     let oracle = TranscriptOracle(root: transcripts.root)
     let clock = FixedClock(epoch: fixtureLastEventEpoch + 60)
     let first = oracle.collect(config: .default, clock: clock)
-    #expect(first.probes.count == 1)
+    #expect(first.probes.count == 2)
     #expect(first.newFailures.count == 1)
     let failure = try #require(first.newFailures.first)
     #expect(failure.path == bad.path)
@@ -156,4 +156,57 @@ import Testing
     let second = oracle.collect(config: .default, clock: clock)
     #expect(second.probes == first.probes)
     #expect(second.newFailures == [])
+}
+
+@Test func freshFailedProbeContributesARecencyProbeSoTheSessionStaysActive() throws {
+    let transcripts = try TranscriptsRoot()
+    defer { transcripts.tearDown() }
+    let poisoned = try transcripts.install(fixture: "malformed", as: "poisoned.jsonl")
+
+    let oracle = TranscriptOracle(root: transcripts.root)
+    let clock = FixedClock(epoch: fixtureLastEventEpoch + 60)
+    let collection = oracle.collect(config: .default, clock: clock)
+    #expect(collection.newFailures.count == 1)
+    #expect(collection.probes == [SessionProbe(
+        sessionPath: poisoned.path,
+        isWaiting: false,
+        midTool: false,
+        lastEventEpoch: fixtureLastEventEpoch,
+        pending: []
+    )])
+
+    let decision = OracleState(
+        sessions: collection.probes,
+        humanWaitHints: [:],
+        claudeProcessesAlive: true
+    ).decision(config: .default, clock: clock)
+    #expect(decision == BlockDecision(
+        shouldBlock: true,
+        activeSessions: [ActiveSession(path: poisoned.path, reasons: [.recentActivity])],
+        discounts: []
+    ))
+}
+
+@Test func staleFailedProbeGoesIdle() throws {
+    let transcripts = try TranscriptsRoot()
+    defer { transcripts.tearDown() }
+    let poisoned = try transcripts.install(fixture: "malformed", as: "poisoned.jsonl")
+
+    let oracle = TranscriptOracle(root: transcripts.root)
+    let clock = FixedClock(epoch: fixtureLastEventEpoch + 301)
+    let collection = oracle.collect(config: .default, clock: clock)
+    #expect(collection.probes == [SessionProbe(
+        sessionPath: poisoned.path,
+        isWaiting: false,
+        midTool: false,
+        lastEventEpoch: fixtureLastEventEpoch,
+        pending: []
+    )])
+
+    let decision = OracleState(
+        sessions: collection.probes,
+        humanWaitHints: [:],
+        claudeProcessesAlive: true
+    ).decision(config: .default, clock: clock)
+    #expect(decision == BlockDecision(shouldBlock: false, activeSessions: [], discounts: []))
 }

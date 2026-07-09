@@ -56,11 +56,24 @@ public final class TranscriptOracle {
                     newFailures.append(ProbeFailure(path: entry.path, message: message))
                 }
             }
-            if case let .probed(probe) = outcome {
+            switch outcome {
+            case let .probed(probe):
                 probes.append(probe)
+            case .failed:
+                probes.append(Self.recencyProbe(for: entry))
             }
         }
         return OracleCollection(probes: probes, newFailures: newFailures)
+    }
+
+    private static func recencyProbe(for entry: TranscriptFileEntry) -> SessionProbe {
+        SessionProbe(
+            sessionPath: entry.path,
+            isWaiting: false,
+            midTool: false,
+            lastEventEpoch: Int64(entry.mtime.timeIntervalSince1970),
+            pending: []
+        )
     }
 
     private func freshOutcome(path: String) -> ProbeCache.Outcome {
