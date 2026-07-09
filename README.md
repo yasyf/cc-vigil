@@ -57,9 +57,9 @@ After that the eye in your menu bar fills whenever the Mac is held awake, and th
 
 ### Hooks say *when* to look, never *what is true*
 
-The obvious design counts hooks: acquire a sleep hold on `UserPromptSubmit`, release it on `Stop`. [adrafinil](https://github.com/kageroumado/adrafinil) works that way, and its [issue #7](https://github.com/kageroumado/adrafinil/issues/7) shows the failure mode: an agent kicks off a background workflow, posts its "running in background" reply, `Stop` fires, the refcount hits zero — and the Mac sleeps while sub-agents are still streaming tokens. Hook events describe the conversation loop, not the work.
+The obvious design counts hooks: acquire a sleep hold on `UserPromptSubmit`, release it on `Stop`. [adrafinil](https://github.com/kageroumado/adrafinil) works that way, and its [issue #7](https://github.com/kageroumado/adrafinil/issues/7) showed where that leads: an agent kicks off a background workflow, posts its "running in background" reply, `Stop` fires, the refcount hits zero — and the Mac sleeps while sub-agents are still streaming tokens. adrafinil patched that case in v1.4.0 with `SubagentStop` refcounting and process sniffing, but the patch rides the same refcount substrate that produced its [issue #2](https://github.com/kageroumado/adrafinil/issues/2) leak: every new way work can start or stop needs another matched acquire/release pair, and any miss either sleeps a working Mac or holds an idle one awake. Hook events describe the conversation loop, not the work.
 
-cc-vigil inverts the relationship. Hooks carry no idle semantics at all; every hook is a nudge meaning "re-read the transcripts now". The truth lives in the transcripts under `~/.claude/projects`, parsed by [cc-transcript](https://github.com/yasyf/cc-transcript): pending tool calls, background tasks, sub-agent trees, and waiting workflows are all visible there, whether or not any hook ever fires.
+cc-vigil inverts the relationship. Hooks carry no idle semantics at all; every hook is a nudge meaning "re-read the transcripts now". The truth lives in the transcripts under `~/.claude/projects`, parsed by [cc-transcript](https://github.com/yasyf/cc-transcript): pending tool calls, background tasks, sub-agent trees, and waiting workflows are all visible there, whether or not any hook ever fires. There is no counter to corrupt — idle is a fresh judgment from evidence on every poll, and background work a `Stop` payload reports still running holds the block across new prompts and auto-compaction until a top-level `Stop` reports none.
 
 ### The oracle
 
@@ -111,5 +111,9 @@ Durations are bare seconds or compound units such as `90`, `30m`, `1h30m`, and `
 | `cc-vigil version`                                  | Print the version.                                                                                |
 
 Every block and unblock lands in `~/Library/Application Support/cc-vigil/events.log` as JSONL with the full oracle snapshot — per-session reasons for why the Mac was held awake or let go.
+
+## Verification
+
+`swift test --package-path CCVigilShared` exercises the policy core. The parts a unit test cannot reach — real SMAppService approvals, `pmset` and IOPM state, the lid, the battery, launchd crash recovery — have a hardware acceptance playbook stored in this repo's [cc-notes](https://github.com/yasyf/cc-notes) refs. In a clone, run `cc-notes init` once and `git pull` to fetch the refs, then `cc-notes doc list` to find the "cc-vigil hardware E2E playbook" and `cc-notes doc show <id>` to open it. Its companion checklist task tracks a run drill by drill.
 
 Licensed under [PolyForm-Noncommercial-1.0.0](LICENSE).
