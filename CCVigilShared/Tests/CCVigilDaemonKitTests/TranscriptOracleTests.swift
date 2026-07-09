@@ -122,23 +122,97 @@ import Testing
     let oracle = TranscriptOracle(root: transcripts.root)
     let clock = FixedClock(epoch: fixtureLastEventEpoch + 60)
     let first = oracle.collect(config: .default, clock: clock)
-    #expect(first.probes.count == 1)
+    let firstProbe = SessionProbe(
+        sessionPath: path.path,
+        isWaiting: false,
+        midTool: false,
+        lastEventEpoch: fixtureLastEventEpoch,
+        pending: []
+    )
+    #expect(first.probes == [firstProbe])
 
-    // Same byte count, same mtime: the cached probe must be returned even
-    // though the content now differs (proves keying, not re-parsing).
+    // Shift the last event's timestamp in place by +300s. The byte count and
+    // mtime are unchanged, so the (path, mtime, size, fileID) key stays
+    // identical, but a re-parse would move lastEventEpoch — the returned value
+    // reveals whether the entry was keyed or re-parsed.
+    let shiftedEpoch = fixtureLastEventEpoch + 300
     let original = try Data(contentsOf: path)
-    var swapped = try String(contentsOf: path, encoding: .utf8)
-    swapped = swapped.replacingOccurrences(of: "\"sessionId\":\"s1\"", with: "\"sessionId\":\"s2\"")
-    try Data(swapped.utf8).write(to: path)
+    var shifted = try String(contentsOf: path, encoding: .utf8)
+    shifted = shifted.replacingOccurrences(
+        of: "\"timestamp\":\"2026-01-02T03:04:07Z\"",
+        with: "\"timestamp\":\"2026-01-02T03:09:07Z\""
+    )
+    try Data(shifted.utf8).write(to: path)
     #expect(try Data(contentsOf: path).count == original.count)
     try transcripts.setMtime(path, epoch: fixtureLastEventEpoch)
-    let cached = oracle.collect(config: .default, clock: clock)
-    #expect(cached.probes == first.probes)
 
-    // A changed mtime invalidates the entry and forces a fresh probe.
+    // Same key: the cache must hand back the OLD probe, not the shifted content.
+    let cached = oracle.collect(config: .default, clock: clock)
+    #expect(cached.probes == [firstProbe])
+
+    // A changed mtime invalidates the entry and forces a fresh probe that
+    // reflects the shifted timestamp.
     try transcripts.setMtime(path, epoch: fixtureLastEventEpoch + 5)
     let fresh = oracle.collect(config: .default, clock: clock)
-    #expect(fresh.probes == first.probes)
+    #expect(fresh.probes == [SessionProbe(
+        sessionPath: path.path,
+        isWaiting: false,
+        midTool: false,
+        lastEventEpoch: shiftedEpoch,
+        pending: []
+    )])
+    #expect(fresh.probes != first.probes)
+}
+
+@Test func cachedFailedProbeStillReassertsTheLastKnownGood() throws {
+    let transcripts = try TranscriptsRoot()
+    defer { transcripts.tearDown() }
+    let session = try transcripts.install(fixture: "mid-tool", as: "session.jsonl")
+
+    // First pass parses cleanly: the mid-tool probe is cached as last-known-good.
+    let oracle = TranscriptOracle(root: transcripts.root)
+    let good = oracle.collect(config: .default, clock: FixedClock(epoch: fixtureLastEventEpoch + 60))
+    let lastKnownGood = SessionProbe(
+        sessionPath: session.path,
+        isWaiting: false,
+        midTool: true,
+        lastEventEpoch: fixtureLastEventEpoch,
+        pending: [PendingItem(toolUseID: "b1", name: "Bash", kind: .midTool)]
+    )
+    #expect(good.probes == [lastKnownGood])
+
+    // A poison line lands; the transcript stops parsing. Its mtime stays put.
+    let malformedLine = try String(contentsOf: fixtureURL("malformed"), encoding: .utf8)
+    let poisoned = try String(contentsOf: session, encoding: .utf8) + "\n" + malformedLine
+    try Data(poisoned.utf8).write(to: session)
+    try transcripts.setMtime(session, epoch: fixtureLastEventEpoch)
+
+    // 301s later: past the 5-min recency window but inside the 12h mid-tool cap.
+    // The first failed collect logs loudly and reasserts the last-known-good.
+    let clock = FixedClock(epoch: fixtureLastEventEpoch + 301)
+    let firstFailure = oracle.collect(config: .default, clock: clock)
+    #expect(firstFailure.newFailures.count == 1)
+    #expect(firstFailure.probes == [lastKnownGood])
+
+    // The same (path, mtime, size, fileID) now serves the cached .failed outcome
+    // from the cache-hit path — silent this time — and it must STILL reassert the
+    // last-known-good rather than drop through to a bare recency probe.
+    let cachedFailure = oracle.collect(config: .default, clock: clock)
+    #expect(cachedFailure.newFailures == [])
+    #expect(cachedFailure.probes == [lastKnownGood])
+
+    // The reasserted mid-tool probe holds the session active past recency.
+    let decision = OracleState(
+        sessions: cachedFailure.probes,
+        humanWaitHints: [:],
+        backgroundWork: [:],
+        claudeProcessesAlive: true
+    ).decision(config: .default, clock: clock)
+    #expect(decision == BlockDecision(
+        shouldBlock: true,
+        activeSessions: [ActiveSession(path: session.path, reasons: [.midTool])],
+        discounts: []
+    ))
 }
 
 @Test func probeFailuresAreLoudOnceAndFallBackToARecencyProbe() throws {
