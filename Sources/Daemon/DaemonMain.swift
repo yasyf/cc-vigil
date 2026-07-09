@@ -39,10 +39,13 @@ enum DaemonMain {
             { BatteryMonitor.sample() }
         }
 
+        let baseRoots = [options.transcriptsRoot] + startup.config.transcriptsRoots.map {
+            URL(fileURLWithPath: $0, isDirectory: true)
+        }
         let core = DaemonCore(
             config: startup.config,
             clock: SystemClock(),
-            transcriptsRoot: options.transcriptsRoot,
+            transcriptsRoots: baseRoots,
             processLister: SysctlClaudeProcessLister(),
             pusher: pusher,
             helperLink: options.dryRun ? .dryRun : .unknown,
@@ -53,7 +56,8 @@ enum DaemonMain {
             thermalReader: SMCThermalReader(),
             batterySampler: batterySampler,
             restoredHolds: startup.holds,
-            restoredPausedUntil: startup.pausedUntil
+            restoredPausedUntil: startup.pausedUntil,
+            restoredRegisteredRoots: startup.registeredRoots
         )
         if !options.dryRun {
             await helperClient.setDisruptionHandler {
@@ -89,6 +93,7 @@ enum DaemonMain {
         let config: VigilConfig
         let holds: HoldRegistry
         let pausedUntil: Date?
+        let registeredRoots: [String]
     }
 
     private static func loadStartup(options: DaemonOptions) -> Startup {
@@ -119,7 +124,14 @@ enum DaemonMain {
             processStart: ProcessFacts.processStart
         )
         let pausedUntil = restored.pausedUntil.flatMap { $0 > Date() ? $0 : nil }
-        return Startup(version: version, paths: paths, config: config, holds: holds, pausedUntil: pausedUntil)
+        return Startup(
+            version: version,
+            paths: paths,
+            config: config,
+            holds: holds,
+            pausedUntil: pausedUntil,
+            registeredRoots: restored.registeredRoots
+        )
     }
 
     private static func startServices(

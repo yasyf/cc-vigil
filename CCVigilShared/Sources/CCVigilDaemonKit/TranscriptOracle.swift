@@ -22,12 +22,19 @@ public struct OracleCollection: Equatable, Sendable {
 }
 
 public final class TranscriptOracle {
-    private let scanner: TranscriptScanner
+    private var scanner: TranscriptScanner
     private let prober = TranscriptProber()
     private var cache = ProbeCache()
 
-    public init(root: URL) {
-        scanner = TranscriptScanner(root: root)
+    public init(roots: [URL]) {
+        scanner = TranscriptScanner(roots: roots)
+    }
+
+    /// Scans an additional root without discarding the probe cache. Callers
+    /// dedupe by real path before adding; a redundant root only wastes an
+    /// enumeration, since the scanner keys entries by real path.
+    public func addRoot(_ root: URL) {
+        scanner = TranscriptScanner(roots: scanner.roots + [root])
     }
 
     public func collect(config: VigilConfig, clock: some WallClock) -> OracleCollection {

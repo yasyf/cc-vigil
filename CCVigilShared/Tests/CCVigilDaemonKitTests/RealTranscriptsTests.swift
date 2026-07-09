@@ -9,7 +9,7 @@ import Testing
 @Test func realTranscriptsProbeWithoutCrashing() {
     let root = FileManager.default.homeDirectoryForCurrentUser
         .appendingPathComponent(".claude/projects", isDirectory: true)
-    let oracle = TranscriptOracle(root: root)
+    let oracle = TranscriptOracle(roots: [root])
     let clock = SystemClock()
     let collection = oracle.collect(config: .default, clock: clock)
 

@@ -10,7 +10,7 @@ import Testing
     let midTool = try transcripts.install(fixture: "mid-tool", as: "midtool.jsonl")
     let waiting = try transcripts.install(fixture: "waiting-workflow", as: "waiting.jsonl")
 
-    let oracle = TranscriptOracle(root: transcripts.root)
+    let oracle = TranscriptOracle(roots: [transcripts.root])
     let clock = FixedClock(epoch: fixtureLastEventEpoch + 60)
     let collection = oracle.collect(config: .default, clock: clock)
     #expect(collection.newFailures == [])
@@ -38,7 +38,7 @@ import Testing
     defer { transcripts.tearDown() }
     try transcripts.install(fixture: "active-recent", as: "recent.jsonl")
 
-    let oracle = TranscriptOracle(root: transcripts.root)
+    let oracle = TranscriptOracle(roots: [transcripts.root])
     let clock = FixedClock(epoch: fixtureLastEventEpoch + 301)
     let collection = oracle.collect(config: .default, clock: clock)
     let decision = OracleState(
@@ -55,7 +55,7 @@ import Testing
     defer { transcripts.tearDown() }
     let waiting = try transcripts.install(fixture: "waiting-workflow", as: "waiting.jsonl")
 
-    let oracle = TranscriptOracle(root: transcripts.root)
+    let oracle = TranscriptOracle(roots: [transcripts.root])
     let clock = FixedClock(epoch: fixtureLastEventEpoch + 45000)
     let collection = oracle.collect(config: .default, clock: clock)
     #expect(collection.probes.count == 1)
@@ -77,7 +77,7 @@ import Testing
     defer { transcripts.tearDown() }
     let recent = try transcripts.install(fixture: "active-recent", as: "abc-123.jsonl")
 
-    let oracle = TranscriptOracle(root: transcripts.root)
+    let oracle = TranscriptOracle(roots: [transcripts.root])
     let clock = FixedClock(epoch: fixtureLastEventEpoch + 60)
     let collection = oracle.collect(config: .default, clock: clock)
     var tracker = HintTracker()
@@ -108,7 +108,7 @@ import Testing
         mtimeEpoch: fixtureLastEventEpoch - window - 100
     )
 
-    let oracle = TranscriptOracle(root: transcripts.root)
+    let oracle = TranscriptOracle(roots: [transcripts.root])
     let collection = oracle.collect(config: .default, clock: FixedClock(epoch: fixtureLastEventEpoch))
     #expect(collection.probes == [])
     #expect(collection.newFailures == [])
@@ -119,7 +119,7 @@ import Testing
     defer { transcripts.tearDown() }
     let path = try transcripts.install(fixture: "active-recent", as: "recent.jsonl")
 
-    let oracle = TranscriptOracle(root: transcripts.root)
+    let oracle = TranscriptOracle(roots: [transcripts.root])
     let clock = FixedClock(epoch: fixtureLastEventEpoch + 60)
     let first = oracle.collect(config: .default, clock: clock)
     let firstProbe = SessionProbe(
@@ -170,7 +170,7 @@ import Testing
     let session = try transcripts.install(fixture: "mid-tool", as: "session.jsonl")
 
     // First pass parses cleanly: the mid-tool probe is cached as last-known-good.
-    let oracle = TranscriptOracle(root: transcripts.root)
+    let oracle = TranscriptOracle(roots: [transcripts.root])
     let good = oracle.collect(config: .default, clock: FixedClock(epoch: fixtureLastEventEpoch + 60))
     let lastKnownGood = SessionProbe(
         sessionPath: session.path,
@@ -221,7 +221,7 @@ import Testing
     let bad = try transcripts.install(fixture: "malformed", as: "bad.jsonl")
     try transcripts.install(fixture: "active-recent", as: "good.jsonl")
 
-    let oracle = TranscriptOracle(root: transcripts.root)
+    let oracle = TranscriptOracle(roots: [transcripts.root])
     let clock = FixedClock(epoch: fixtureLastEventEpoch + 60)
     let first = oracle.collect(config: .default, clock: clock)
     #expect(first.probes.count == 2)
@@ -241,7 +241,7 @@ import Testing
     defer { transcripts.tearDown() }
     let poisoned = try transcripts.install(fixture: "malformed", as: "poisoned.jsonl")
 
-    let oracle = TranscriptOracle(root: transcripts.root)
+    let oracle = TranscriptOracle(roots: [transcripts.root])
     let clock = FixedClock(epoch: fixtureLastEventEpoch + 60)
     let collection = oracle.collect(config: .default, clock: clock)
     #expect(collection.newFailures.count == 1)
@@ -271,7 +271,7 @@ import Testing
     defer { transcripts.tearDown() }
     let poisoned = try transcripts.install(fixture: "malformed", as: "poisoned.jsonl")
 
-    let oracle = TranscriptOracle(root: transcripts.root)
+    let oracle = TranscriptOracle(roots: [transcripts.root])
     let clock = FixedClock(epoch: fixtureLastEventEpoch + 301)
     let collection = oracle.collect(config: .default, clock: clock)
     #expect(collection.probes == [SessionProbe(
@@ -297,7 +297,7 @@ import Testing
     let session = try transcripts.install(fixture: "mid-tool", as: "session.jsonl")
 
     // First pass parses cleanly: the mid-tool probe is cached as last-known-good.
-    let oracle = TranscriptOracle(root: transcripts.root)
+    let oracle = TranscriptOracle(roots: [transcripts.root])
     let good = oracle.collect(config: .default, clock: FixedClock(epoch: fixtureLastEventEpoch + 60))
     #expect(good.newFailures == [])
     #expect(good.probes == [SessionProbe(

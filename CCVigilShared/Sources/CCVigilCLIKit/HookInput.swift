@@ -14,7 +14,11 @@ public enum HookInputError: Error, Equatable, CustomStringConvertible {
 }
 
 public enum HookInput {
-    public static func nudgePayload(fromHookJSON data: Data, claudePid: Int32?) throws -> NudgePayload {
+    public static func nudgePayload(
+        fromHookJSON data: Data,
+        claudePid: Int32?,
+        transcriptsRoot: String?
+    ) throws -> NudgePayload {
         guard let parsed = try? JSONSerialization.jsonObject(with: data) else {
             throw HookInputError.notJSON
         }
@@ -27,7 +31,8 @@ public enum HookInput {
             notificationKind: object["notification_type"] as? String,
             claudePid: claudePid,
             backgroundTasks: (object["background_tasks"] as? [Any])?.count,
-            sessionCrons: (object["session_crons"] as? [Any])?.count
+            sessionCrons: (object["session_crons"] as? [Any])?.count,
+            transcriptsRoot: transcriptsRoot
         )
     }
 }

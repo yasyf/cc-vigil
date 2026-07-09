@@ -5,7 +5,7 @@ import Testing
 
 @Test func extractsAllHookFields() throws {
     let json = #"{"session_id":"s1","hook_event_name":"Notification","notification_type":"permission_request"}"#
-    let payload = try HookInput.nudgePayload(fromHookJSON: Data(json.utf8), claudePid: 42)
+    let payload = try HookInput.nudgePayload(fromHookJSON: Data(json.utf8), claudePid: 42, transcriptsRoot: nil)
     #expect(payload == NudgePayload(
         sessionId: "s1",
         hookEvent: "Notification",
@@ -14,14 +14,31 @@ import Testing
     ))
 }
 
+@Test func forwardsTheRelocatedTranscriptsRoot() throws {
+    let payload = try HookInput.nudgePayload(
+        fromHookJSON: Data(#"{"session_id":"s1"}"#.utf8),
+        claudePid: nil,
+        transcriptsRoot: "/relocated/.claude/projects"
+    )
+    #expect(payload == NudgePayload(sessionId: "s1", transcriptsRoot: "/relocated/.claude/projects"))
+}
+
+@Test(arguments: [
+    (["CLAUDE_CONFIG_DIR": "/relocated/.claude"], "/relocated/.claude/projects" as String?),
+    (["CLAUDE_CONFIG_DIR": ""], nil),
+    ([:], nil),
+]) func derivesTranscriptsRootFromClaudeConfigDir(environment: [String: String], expected: String?) {
+    #expect(NudgeCommand.relocatedTranscriptsRoot(environment: environment) == expected)
+}
+
 @Test func missingFieldsBecomeNil() throws {
-    let payload = try HookInput.nudgePayload(fromHookJSON: Data("{}".utf8), claudePid: nil)
+    let payload = try HookInput.nudgePayload(fromHookJSON: Data("{}".utf8), claudePid: nil, transcriptsRoot: nil)
     #expect(payload == NudgePayload())
 }
 
 @Test func wrongTypedFieldsBecomeNil() throws {
     let json = #"{"session_id":5,"hook_event_name":"Stop","background_tasks":7,"session_crons":"hourly"}"#
-    let payload = try HookInput.nudgePayload(fromHookJSON: Data(json.utf8), claudePid: nil)
+    let payload = try HookInput.nudgePayload(fromHookJSON: Data(json.utf8), claudePid: nil, transcriptsRoot: nil)
     #expect(payload == NudgePayload(hookEvent: "Stop"))
 }
 
@@ -35,7 +52,7 @@ import Testing
         {"id":"agent_2","type":"subagent","status":"running","agent_type":"general-purpose"}],
      "session_crons":[{"id":"cron_1","schedule":"*/5 * * * *","prompt":"poll CI"}]}
     """#
-    let payload = try HookInput.nudgePayload(fromHookJSON: Data(json.utf8), claudePid: 7)
+    let payload = try HookInput.nudgePayload(fromHookJSON: Data(json.utf8), claudePid: 7, transcriptsRoot: nil)
     #expect(payload == NudgePayload(
         sessionId: "a1b2",
         hookEvent: "Stop",
@@ -47,18 +64,18 @@ import Testing
 
 @Test func emptyBackgroundWorkArraysBecomeZeroCounts() throws {
     let json = #"{"session_id":"s1","hook_event_name":"Stop","background_tasks":[],"session_crons":[]}"#
-    let payload = try HookInput.nudgePayload(fromHookJSON: Data(json.utf8), claudePid: nil)
+    let payload = try HookInput.nudgePayload(fromHookJSON: Data(json.utf8), claudePid: nil, transcriptsRoot: nil)
     #expect(payload == NudgePayload(sessionId: "s1", hookEvent: "Stop", backgroundTasks: 0, sessionCrons: 0))
 }
 
 @Test func rejectsNonJSONInput() {
     #expect(throws: HookInputError.notJSON) {
-        try HookInput.nudgePayload(fromHookJSON: Data("not json".utf8), claudePid: nil)
+        try HookInput.nudgePayload(fromHookJSON: Data("not json".utf8), claudePid: nil, transcriptsRoot: nil)
     }
 }
 
 @Test func rejectsNonObjectRoot() {
     #expect(throws: HookInputError.notObject) {
-        try HookInput.nudgePayload(fromHookJSON: Data("[1,2]".utf8), claudePid: nil)
+        try HookInput.nudgePayload(fromHookJSON: Data("[1,2]".utf8), claudePid: nil, transcriptsRoot: nil)
     }
 }

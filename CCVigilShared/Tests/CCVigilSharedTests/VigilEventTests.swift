@@ -117,10 +117,19 @@ func roundTrips(record: EventRecord) throws {
 @Test func persistedStateEncodesExactJSON() throws {
     let state = PersistedState(
         holds: [Hold(key: "ci", reason: "build", ttlSeconds: 60, createdAt: at, pid: nil)],
-        pausedUntil: Date(timeIntervalSince1970: 1_767_323_100)
+        pausedUntil: Date(timeIntervalSince1970: 1_767_323_100),
+        registeredRoots: ["/relocated/.claude/projects"]
     )
     let encoded = try #require(String(bytes: WireCodec.encodePayload(state), encoding: .utf8))
     #expect(encoded == "{\"holds\":[{\"createdAt\":1767323047,\"key\":\"ci\","
-        + "\"reason\":\"build\",\"ttlSeconds\":60}],\"pausedUntil\":1767323100}")
+        + "\"reason\":\"build\",\"ttlSeconds\":60}],\"pausedUntil\":1767323100,"
+        + "\"registeredRoots\":[\"/relocated/.claude/projects\"]}")
     #expect(try WireCodec.decodePayload(PersistedState.self, from: Data(encoded.utf8)) == state)
+}
+
+@Test func persistedStateDecodesLegacyJSONWithoutRegisteredRoots() throws {
+    let legacy = "{\"holds\":[],\"pausedUntil\":1767323100}"
+    let decoded = try WireCodec.decodePayload(PersistedState.self, from: Data(legacy.utf8))
+    #expect(decoded == PersistedState(holds: [], pausedUntil: Date(timeIntervalSince1970: 1_767_323_100)))
+    #expect(decoded.registeredRoots == [])
 }

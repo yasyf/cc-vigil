@@ -278,6 +278,31 @@ struct DaemonRoundTripTests {
         #expect(try client.roundTrip(.ping) == .ok)
     }
 
+    @Test func registersARelocatedTranscriptsRootCarriedByANudge() throws {
+        let harness = try DaemonHarness()
+        defer { harness.stop() }
+        try harness.waitUntilReady()
+        let client = SocketClient(path: harness.socketPath)
+        let stateURL = SupportPaths(directory: harness.supportDir.url).stateURL
+
+        let relocated = try ShortTempDir(prefix: "vigil-cfg")
+        defer { relocated.tearDown() }
+        let missing = relocated.url.appendingPathComponent("nope", isDirectory: true).path
+
+        // A nonexistent dir is never registered; an existing one is, once.
+        #expect(try client.roundTrip(.nudge(NudgePayload(transcriptsRoot: missing))) == .ok)
+        #expect(try roots(from: stateURL) == [])
+        #expect(try client.roundTrip(.nudge(NudgePayload(transcriptsRoot: relocated.url.path))) == .ok)
+        #expect(try roots(from: stateURL) == [relocated.url.path])
+        #expect(try client.roundTrip(.nudge(NudgePayload(transcriptsRoot: relocated.url.path))) == .ok)
+        #expect(try roots(from: stateURL) == [relocated.url.path])
+    }
+
+    private func roots(from stateURL: URL) throws -> [String] {
+        guard FileManager.default.fileExists(atPath: stateURL.path) else { return [] }
+        return try WireCodec.decodePayload(PersistedState.self, from: Data(contentsOf: stateURL)).registeredRoots
+    }
+
     @Test func nudgeFailsOpenWithoutADaemon() throws {
         let dir = try ShortTempDir(prefix: "vigil-nod")
         defer { dir.tearDown() }

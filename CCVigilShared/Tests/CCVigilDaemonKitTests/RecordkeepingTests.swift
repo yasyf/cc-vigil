@@ -53,10 +53,13 @@ private let at = Date(timeIntervalSince1970: 1_767_323_047)
     #expect(try StateStore.load(url: url) == nil)
     let state = PersistedState(
         holds: [Hold(key: "ci", reason: "build", ttlSeconds: 600, createdAt: at, pid: 7)],
-        pausedUntil: at
+        pausedUntil: at,
+        registeredRoots: ["/relocated/.claude/projects"]
     )
     try StateStore.save(state, to: url)
-    #expect(try StateStore.load(url: url) == state)
+    let loaded = try StateStore.load(url: url)
+    #expect(loaded == state)
+    #expect(loaded?.registeredRoots == ["/relocated/.claude/projects"])
     try StateStore.save(PersistedState(holds: [], pausedUntil: nil), to: url)
     #expect(try StateStore.load(url: url) == PersistedState(holds: [], pausedUntil: nil))
 }

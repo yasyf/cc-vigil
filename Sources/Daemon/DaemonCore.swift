@@ -21,6 +21,7 @@ actor DaemonCore {
 
     private var hints = HintTracker()
     private var backgroundWork = BackgroundWorkTracker()
+    private var rootRegistry: TranscriptRootRegistry
     private var holds: HoldRegistry
     private var latch: CutoutLatch
     private var helperLink: HelperLink
@@ -38,7 +39,7 @@ actor DaemonCore {
     init(
         config: VigilConfig,
         clock: SystemClock,
-        transcriptsRoot: URL,
+        transcriptsRoots: [URL],
         processLister: any ClaudeProcessListing,
         pusher: any BlockPushing,
         helperLink: HelperLink,
@@ -49,11 +50,18 @@ actor DaemonCore {
         thermalReader: (any ThermalReading)?,
         batterySampler: @escaping @Sendable () -> BatteryReading?,
         restoredHolds: HoldRegistry,
-        restoredPausedUntil: Date?
+        restoredPausedUntil: Date?,
+        restoredRegisteredRoots: [String]
     ) {
         self.config = config
         self.clock = clock
-        oracle = TranscriptOracle(root: transcriptsRoot)
+        let registeredRootURLs = restoredRegisteredRoots.map { URL(fileURLWithPath: $0, isDirectory: true) }
+        let allRoots = transcriptsRoots + registeredRootURLs
+        oracle = TranscriptOracle(roots: allRoots)
+        rootRegistry = TranscriptRootRegistry(
+            knownRealPaths: Set(allRoots.map { $0.resolvingSymlinksInPath().path }),
+            registeredRoots: restoredRegisteredRoots
+        )
         self.processLister = processLister
         self.pusher = pusher
         self.helperLink = helperLink
@@ -101,6 +109,9 @@ actor DaemonCore {
         case let .nudge(payload):
             hints.apply(payload, now: clock.now)
             backgroundWork.apply(payload, now: clock.now)
+            if let root = payload.transcriptsRoot {
+                registerTranscriptsRoot(root)
+            }
             await signal.nudge()
             return .ok
         case .status:
@@ -359,7 +370,14 @@ actor DaemonCore {
 
     private func persistState() {
         do {
-            try StateStore.save(PersistedState(holds: holds.holds, pausedUntil: pausedUntil), to: stateURL)
+            try StateStore.save(
+                PersistedState(
+                    holds: holds.holds,
+                    pausedUntil: pausedUntil,
+                    registeredRoots: rootRegistry.registeredRoots
+                ),
+                to: stateURL
+            )
         } catch {
             Logger.daemon.fault("state save failed: \(String(describing: error), privacy: .public)")
         }
@@ -375,6 +393,25 @@ actor DaemonCore {
 }
 
 private extension DaemonCore {
+    /// A launchd daemon never inherits the session's `CLAUDE_CONFIG_DIR`, so a
+    /// relocated transcripts root is invisible until a nudge from that session
+    /// carries it. Admit the root when it exists and its real path is not
+    /// already scanned, then persist it so it survives a restart. Fail toward
+    /// scanning more: a stale registered root that no longer exists is kept and
+    /// simply enumerates to nothing.
+    func registerTranscriptsRoot(_ path: String) {
+        let url = URL(fileURLWithPath: path, isDirectory: true)
+        var isDirectory: ObjCBool = false
+        guard FileManager.default.fileExists(atPath: url.path, isDirectory: &isDirectory), isDirectory.boolValue else {
+            return
+        }
+        let resolved = url.resolvingSymlinksInPath().path
+        guard rootRegistry.register(rawPath: path, realPath: resolved) else { return }
+        oracle.addRoot(url)
+        Logger.daemon.notice("discovered relocated Claude config root \(resolved, privacy: .public); now scanning it")
+        persistState()
+    }
+
     func logFreshDiscounts(_ decision: BlockDecision) {
         for discount in decision.discounts where !lastDecision.discounts.contains(discount) {
             switch discount.reason {

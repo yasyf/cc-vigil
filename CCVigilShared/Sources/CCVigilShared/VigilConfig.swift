@@ -18,6 +18,7 @@ public struct VigilConfig: Codable, Equatable, Sendable {
     public let hideMenuBarExtra: Bool
     public let notifyOnRelease: Bool
     public let notifyOnCutout: Bool
+    public let transcriptsRoots: [String]
 
     private init() {
         batteryFloorPercent = 20
@@ -29,6 +30,7 @@ public struct VigilConfig: Codable, Equatable, Sendable {
         hideMenuBarExtra = false
         notifyOnRelease = true
         notifyOnCutout = true
+        transcriptsRoots = []
     }
 
     public init(
@@ -40,7 +42,8 @@ public struct VigilConfig: Codable, Equatable, Sendable {
         pollIdleSeconds: Int = Self.default.pollIdleSeconds,
         hideMenuBarExtra: Bool = Self.default.hideMenuBarExtra,
         notifyOnRelease: Bool = Self.default.notifyOnRelease,
-        notifyOnCutout: Bool = Self.default.notifyOnCutout
+        notifyOnCutout: Bool = Self.default.notifyOnCutout,
+        transcriptsRoots: [String] = Self.default.transcriptsRoots
     ) throws {
         guard Self.batteryFloorPercentRange.contains(batteryFloorPercent) else {
             throw VigilConfigError.outOfRange(field: "batteryFloorPercent", allowed: "5-50")
@@ -66,6 +69,7 @@ public struct VigilConfig: Codable, Equatable, Sendable {
         self.hideMenuBarExtra = hideMenuBarExtra
         self.notifyOnRelease = notifyOnRelease
         self.notifyOnCutout = notifyOnCutout
+        self.transcriptsRoots = transcriptsRoots
     }
 
     public init(from decoder: Decoder) throws {
@@ -89,7 +93,9 @@ public struct VigilConfig: Codable, Equatable, Sendable {
             notifyOnRelease: container
                 .decodeIfPresent(Bool.self, forKey: .notifyOnRelease) ?? Self.default.notifyOnRelease,
             notifyOnCutout: container
-                .decodeIfPresent(Bool.self, forKey: .notifyOnCutout) ?? Self.default.notifyOnCutout
+                .decodeIfPresent(Bool.self, forKey: .notifyOnCutout) ?? Self.default.notifyOnCutout,
+            transcriptsRoots: container
+                .decodeIfPresent([String].self, forKey: .transcriptsRoots) ?? Self.default.transcriptsRoots
         )
     }
 }
