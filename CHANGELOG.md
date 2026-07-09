@@ -6,30 +6,90 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added
+- Every block edge in `events.log` now carries the active holds, so a
+  hold-driven block — `cc-vigil hold` with no active sessions — explains
+  itself in the log instead of needing a separate hold event to correlate.
+
+### Changed
+- The daemon's block-composition and push-decision logic moved into the
+  tested CCVigilShared core, so a regression in "should the Mac be held awake
+  right now" fails the unit suite instead of surfacing on hardware. No
+  behavior change.
+- The hardware acceptance playbook lives in the repo's cc-notes store instead
+  of a markdown file; the README's Verification section says how to open it.
+
 ### Fixed
-- The human-wait hint a tool-permission prompt sets now clears when the human
-  approves the tool, so the Mac no longer sleeps partway through a long approved
-  tool such as a 25-minute `cargo build`. Approval writes nothing to the
-  transcript and fired no installed hook, so the hint outlived the approval and
-  discounted the still-working session. cc-vigil now installs a `PreToolUse`
-  nudge — the only signal that the approval landed, since the transcript does not
-  advance until the tool returns — and clears the hint on it. The nudge is
-  fire-and-forget, so the pre-tool hook, which blocks the tool it precedes, never
-  waits on the daemon's reply. Existing installs pick up the new hook the next
-  time the app runs its installer, or when you run `cc-vigil install-hooks`;
-  there is no back-compat shim.
+- The Mac no longer sleeps partway through a long approved tool call such as
+  a 25-minute `cargo build`. Approving a permission prompt writes nothing to
+  the transcript and fired no installed hook, so the human-wait hint the
+  prompt set outlived the approval and idled the still-working session.
+  cc-vigil now installs a `PreToolUse` nudge — approval fires it, and the
+  transcript does not advance until the tool returns, so it is the only
+  signal the approval landed — and clears the hint on it. The nudge is
+  fire-and-forget, so the pre-tool hook, which blocks the tool it precedes,
+  never waits on the daemon. Existing installs pick up the new hook the next
+  time the app runs its installer, or when you run `cc-vigil install-hooks`.
 - Background work that outlives its turn — a `run_in_background` build, a
   detached subagent, or a session cron — now holds the sleep block across new
   prompts and auto-compaction. Such work never advances the transcript, so a
   quick follow-up question moved it out of the oracle's view: nothing pended,
   the idle hint discounted the session, and the Mac slept mid-build. Claude
-  Code v2.1.145+ reports the still-running work on every `Stop`/`SubagentStop`
-  payload (`background_tasks`/`session_crons`); the nudge now forwards those
+  Code v2.1.145+ reports still-running work on every `Stop`/`SubagentStop`
+  payload (`background_tasks`/`session_crons`); the nudge forwards those
   counts and the oracle pins the session awake — immune to the idle hint —
-  until a later stop reports none, bounded by the pending-async max-age
-  backstop. The bumped cc-transcript pin brings the matching delivery-aware
-  oracle: async completions count when their notification is delivered, not
-  when it is enqueued.
+  until a top-level `Stop` reports none running. A `SubagentStop` describes
+  only the finishing subagent, so it can add to the hold but never clear it,
+  and the pending-async max-age backstop still bounds the pin. The bumped
+  cc-transcript pin brings the matching delivery-aware oracle: async
+  completions count when their notification is delivered, not when it is
+  enqueued.
+- Finished subagents no longer pin the Mac awake for hours. Subagent
+  sidechain transcripts were probed with main-session semantics, so any
+  background task inside a completed subagent read as pending until the
+  12-hour backstop — battery drain in a bag, the inverse of the tool's
+  promise. Discovery now skips `subagents/` directories (matched on resolved
+  paths, so symlinked layouts stay excluded); the parent transcript already
+  carries the authoritative pending state.
+- A transcript that stops parsing no longer silently drops its session from
+  the active set — one malformed line could idle the busiest session. A
+  failed probe now reasserts the session's last good probe, or falls back to
+  file recency when there is none, so the oracle fails toward keeping the Mac
+  awake.
+- A helper crash during an in-flight push can no longer swallow the forced
+  re-assert and leave the Mac unprotected for up to a minute; re-asserts are
+  generation-counted so the next evaluation re-pushes instead of being
+  suppressed.
+- The daemon no longer dies of SIGPIPE when a fire-and-forget nudge
+  disconnects before the reply — the exact traffic the new `PreToolUse` hook
+  produces on every tool call.
+- Uninstall can no longer boot out the root helper on an unconfirmed clear
+  and strand `disablesleep=1`: the clear path's timeouts are coherent
+  end-to-end, and a caller timeout means "may still be clearing", not
+  permission to proceed. The daemon also caps socket concurrency and recovers
+  from an aborted uninstall clear instead of staying stuck shutting down.
+- Rebooting while blocked no longer risks stranding `disablesleep=1` until
+  login when one `pmset` call fails: the helper's boot-time force-clear
+  retries until it confirms, like the SIGTERM and dead-man paths already did.
+- CLI hardening: `cc-vigil log --lines` rejects a negative count instead of
+  crashing; `pause --for` clamps to the same 24-hour cap as `hold`; `nudge`
+  bounds its stdin read instead of buffering a runaway hook payload; and
+  `hold` prints the release key before sending, so a reply timeout can no
+  longer orphan an already-applied hold.
+- Hook installs survive unusual filesystems: the installed nudge command path
+  is shell-quoted (a space in the bundle path no longer breaks every nudge),
+  `settings.json` writes follow symlinks instead of replacing the link node,
+  and uninstall resolves the bundle path before matching the CLI symlink so a
+  dangling link is still removed.
+- A corrupt `state.json` or `config.json` used to crash-loop the daemon,
+  leaving zero sleep protection. The bad file is now quarantined to a
+  `.corrupt` sibling with a loud log, and the daemon starts fresh (a corrupt
+  config falls back to the built-in defaults).
+
+### Security
+- The daemon's app XPC endpoint now verifies callers with the same
+  team-pinned verifier the helper uses, so another same-user process can no
+  longer read active-session status and transcript paths.
 
 ## [0.1.1] - 2026-07-08
 
