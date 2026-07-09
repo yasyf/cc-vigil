@@ -11,14 +11,19 @@ import Testing
     #expect(elapsed < .seconds(1))
 }
 
-@Test func waitTimesOutWithoutNudge() async {
+@Test(.timeLimit(.minutes(1)))
+func waitTimesOutWithoutNudge() async {
     let signal = NudgeSignal()
     let clock = ContinuousClock()
     let elapsed = await clock.measure {
         await signal.wait(upTo: 0.05)
     }
+    // Lower bound only: the wait must block for ~its timeout (it returned late,
+    // not instantly). No wall-clock ceiling — under parallel test load the
+    // continuation can resume seconds late (this 50ms wait measured 5.8s on a CI
+    // runner), so a tight upper bound tests the scheduler, not NudgeSignal. The
+    // `.timeLimit` trait catches a genuine hang.
     #expect(elapsed >= .milliseconds(45))
-    #expect(elapsed < .seconds(5))
 }
 
 @Test func nudgeDuringWaitResumesEarly() async {

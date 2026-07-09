@@ -140,7 +140,10 @@ func pmsetRunResultSuccess(result: PmsetRunResult, expected: Bool) {
 @Test func clamshellWaitsForConcurrentExitWithinWatchdog() {
     let process = ScriptedPmsetProcess(script: .exitInBackground(status: 0, afterMilliseconds: 10))
     let launcher = ScriptedPmsetLauncher(process: process)
-    let control = PmsetClamshellControl(launcher: launcher, timeoutSeconds: 5)
+    // Widen the watchdog far past the 10ms scripted exit: on a loaded CI runner
+    // the background exit callback can be scheduled seconds late, so a tight
+    // window trips the watchdog spuriously. A genuine hang still fails (at 30s).
+    let control = PmsetClamshellControl(launcher: launcher, timeoutSeconds: 30)
     #expect(control.setDisableSleep(true) == .exited(status: 0, stderr: ""))
     #expect(process.terminated == false)
 }
