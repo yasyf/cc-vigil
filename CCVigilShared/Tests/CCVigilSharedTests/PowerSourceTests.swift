@@ -49,3 +49,14 @@ private func batterySource(
     let reading = BatterySourceParser.reading(fromSources: [ups, batterySource(current: 7)])
     #expect(reading == BatteryReading(onBattery: true, percent: 7))
 }
+
+@Test(arguments: [
+    (BatteryReading?.none, BatteryReading(onBattery: true, percent: 80), false),
+    (BatteryReading(onBattery: false, percent: 80), BatteryReading(onBattery: true, percent: 80), true),
+    (BatteryReading(onBattery: true, percent: 80), BatteryReading(onBattery: false, percent: 80), true),
+    (BatteryReading(onBattery: true, percent: 42), BatteryReading(onBattery: true, percent: 50), false),
+    (BatteryReading(onBattery: false, percent: 90), BatteryReading(onBattery: false, percent: 100), false),
+])
+func detectsPowerSourceTransition(previous: BatteryReading?, current: BatteryReading, expected: Bool) {
+    #expect(PowerSourceTransition.occurred(from: previous, to: current) == expected)
+}

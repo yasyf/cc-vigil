@@ -27,3 +27,14 @@ public enum BatterySourceParser {
         return BatteryReading(onBattery: onBattery, percent: percent)
     }
 }
+
+public enum PowerSourceTransition {
+    /// True when the reading flipped between AC and battery power. On Apple
+    /// Silicon, plugging or unplugging with the lid closed can instant-sleep the
+    /// Mac and drop the assertion, so the daemon re-asserts the block on such a
+    /// transition — but not on a same-source charge tick or the first reading.
+    public static func occurred(from previous: BatteryReading?, to current: BatteryReading) -> Bool {
+        guard let previous else { return false }
+        return previous.onBattery != current.onBattery
+    }
+}

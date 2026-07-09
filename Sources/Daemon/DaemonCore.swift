@@ -215,7 +215,13 @@ actor DaemonCore {
 
     func updateBattery(_ reading: BatteryReading) async {
         guard reading != battery else { return }
+        let transitioned = PowerSourceTransition.occurred(from: battery, to: reading)
         battery = reading
+        if transitioned, lastDesired {
+            let source = reading.onBattery ? "battery" : "AC"
+            Logger.daemon.info("power source transition to \(source, privacy: .public): re-asserting sleep block")
+            pushDecider.forceReassert()
+        }
         await signal.nudge()
     }
 
