@@ -9,7 +9,7 @@ import UserNotifications
 /// requested lazily on the first edge worth delivering; a denial is logged once
 /// and every later edge is dropped silently.
 @MainActor
-final class SleepNotificationController {
+final class SleepNotificationController: NSObject, UNUserNotificationCenterDelegate {
     private enum Authorization {
         case unknown
         case granted
@@ -19,6 +19,22 @@ final class SleepNotificationController {
     private let center = UNUserNotificationCenter.current()
     private var notifier = SleepNotifier()
     private var authorization = Authorization.unknown
+
+    override init() {
+        super.init()
+        center.delegate = self
+    }
+
+    nonisolated func userNotificationCenter(
+        _: UNUserNotificationCenter,
+        willPresent notification: UNNotification
+    ) async -> UNNotificationPresentationOptions {
+        var options: UNNotificationPresentationOptions = [.banner]
+        if notification.request.content.sound != nil {
+            options.insert(.sound)
+        }
+        return options
+    }
 
     func handle(_ event: StatusViewModel.Event, settings: NotificationSettings) {
         let pending = notifier.detect(event, settings: settings, now: Date())

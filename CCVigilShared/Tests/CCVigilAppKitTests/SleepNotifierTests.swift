@@ -193,3 +193,39 @@ func releaseBodyCountsWhatHadBeenHolding(
     ])
     #expect(results == [[], [], []])
 }
+
+@Test func cutoutSuppressedBlockSettlingDoesNotFireRelease() {
+    let results = notifications([
+        report(shouldBlock: true, blockApplied: true, activeSessions: [session]),
+        report(shouldBlock: false, blockApplied: true, activeSessions: [session], latchedCutouts: [.battery]),
+        report(shouldBlock: false, blockApplied: false, activeSessions: [session], latchedCutouts: [.battery]),
+    ])
+    #expect(results == [
+        [],
+        [SleepNotification(
+            kind: .cutoutLatched,
+            title: "Sleep protection dropped",
+            body: "Battery cutout latched — the Mac may sleep despite active agents."
+        )],
+        [],
+    ])
+}
+
+@Test func cutoutLatchedWhileDisconnectedFiresOnReconnect() {
+    let results = notifications([
+        report(shouldBlock: true, blockApplied: true, activeSessions: [session]),
+        nil,
+        report(shouldBlock: false, blockApplied: false, activeSessions: [session], latchedCutouts: [.battery]),
+        report(shouldBlock: false, blockApplied: false, activeSessions: [session], latchedCutouts: [.battery]),
+    ])
+    #expect(results == [
+        [],
+        [],
+        [SleepNotification(
+            kind: .cutoutLatched,
+            title: "Sleep protection dropped",
+            body: "Battery cutout latched — the Mac may sleep despite active agents."
+        )],
+        [],
+    ])
+}

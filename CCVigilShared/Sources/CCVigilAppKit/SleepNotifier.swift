@@ -45,7 +45,6 @@ public struct SleepNotifier: Equatable, Sendable {
         switch event {
         case .disconnected:
             previous = nil
-            lastBlocking = nil
             return []
         case let .statusUpdated(report):
             defer {
@@ -54,7 +53,16 @@ public struct SleepNotifier: Equatable, Sendable {
                     lastBlocking = report
                 }
             }
-            guard let previous else { return [] }
+            guard let previous else {
+                if settings.notifyOnCutout,
+                   lastBlocking != nil,
+                   !report.blockApplied,
+                   !report.latchedCutouts.isEmpty
+                {
+                    return [Self.cutoutLatched(report.latchedCutouts)]
+                }
+                return []
+            }
             let newlyLatched = report.latchedCutouts.filter { !previous.latchedCutouts.contains($0) }
             var notifications: [SleepNotification] = []
             if settings.notifyOnCutout, previous.shouldBlock, !newlyLatched.isEmpty {
@@ -65,7 +73,9 @@ public struct SleepNotifier: Equatable, Sendable {
                !report.blockApplied,
                !report.shouldBlock,
                report.pausedUntil == nil,
-               newlyLatched.isEmpty,
+               report.latchedCutouts.isEmpty,
+               report.activeSessions.isEmpty,
+               report.holds.isEmpty,
                let lastBlocking
             {
                 notifications.append(Self.released(lastBlocking, now: now))
