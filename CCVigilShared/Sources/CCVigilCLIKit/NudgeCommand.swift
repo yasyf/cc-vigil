@@ -16,7 +16,7 @@ public struct NudgeCommand: ParsableCommand {
     /// one stderr warning and a clean exit 0.
     public func run() {
         do {
-            let input = FileHandle.standardInput.readDataToEndOfFile()
+            let input = try NudgeStdin.read(from: .standardInput)
             let payload = try HookInput.nudgePayload(
                 fromHookJSON: input,
                 claudePid: ClaudeAncestry.nearestClaudeAncestorOfSelf()
