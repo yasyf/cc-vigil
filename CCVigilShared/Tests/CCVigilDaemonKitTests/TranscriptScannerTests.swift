@@ -43,6 +43,32 @@ import Testing
     #expect(entries.map(\.path) == [session.resolvingSymlinksInPath().path])
 }
 
+@Test func scansWhenRootPathContainsSubagentsAncestor() throws {
+    let transcripts = try TranscriptsRoot()
+    defer { transcripts.tearDown() }
+    let session = try transcripts.install(fixture: "active-recent", as: "session.jsonl", in: "subagents/projects/p1")
+    let root = transcripts.root.appendingPathComponent("subagents/projects", isDirectory: true)
+
+    let entries = TranscriptScanner(root: root).entries()
+    #expect(entries.map(\.path) == [session.resolvingSymlinksInPath().path])
+}
+
+@Test func excludesSymlinkResolvingIntoSubagents() throws {
+    let transcripts = try TranscriptsRoot()
+    defer { transcripts.tearDown() }
+    let session = try transcripts.install(fixture: "active-recent", as: "session.jsonl", in: "p1")
+    let sidechain = try transcripts.install(fixture: "active-recent", as: "agent-x.jsonl", in: "p1/session/subagents")
+    let linkDirectory = transcripts.root.appendingPathComponent("p2", isDirectory: true)
+    try FileManager.default.createDirectory(at: linkDirectory, withIntermediateDirectories: true)
+    try FileManager.default.createSymbolicLink(
+        at: linkDirectory.appendingPathComponent("link.jsonl"),
+        withDestinationURL: sidechain
+    )
+
+    let entries = TranscriptScanner(root: transcripts.root).entries()
+    #expect(entries.map(\.path) == [session.resolvingSymlinksInPath().path])
+}
+
 @Test func missingRootScansToEmpty() {
     let scanner = TranscriptScanner(root: URL(fileURLWithPath: "/nonexistent/never/projects"))
     #expect(scanner.entries() == [])
