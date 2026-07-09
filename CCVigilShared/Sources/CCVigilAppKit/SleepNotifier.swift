@@ -31,6 +31,12 @@ public struct SleepNotification: Equatable, Sendable {
 /// Detects the two user-facing edges in the daemon's status stream — the block
 /// releasing because agents finished, and a cutout latching mid-block — and
 /// builds their notification content. State-tracking only; the App layer posts.
+///
+/// Known limits: edges that both begin and resolve inside an XPC disconnect gap
+/// can misfire or go unseen — the snapshot stream cannot reconstruct causality
+/// across the gap, and a clean fix needs daemon-side alert telemetry. The
+/// daemon's events.log remains the ground truth; the away summary surfaces
+/// anything these toasts miss.
 public struct SleepNotifier: Equatable, Sendable {
     private var previous: StatusReport?
     private var lastBlocking: StatusReport?

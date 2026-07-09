@@ -6,6 +6,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.2.0] - 2026-07-09
+
 ### Added
 - The app posts a macOS notification when the block releases because agents
   finished — what was holding the Mac awake and when it wrapped up — and when
@@ -246,6 +248,7 @@ Claude Code shipped as a signed and notarized menu-bar app.
   installer state machine, symlinker, away digest) lives in the new
   CCVigilAppKit library under `swift test`.
 
-[Unreleased]: https://github.com/yasyf/cc-vigil/compare/v0.1.1...HEAD
+[Unreleased]: https://github.com/yasyf/cc-vigil/compare/v0.2.0...HEAD
+[0.2.0]: https://github.com/yasyf/cc-vigil/compare/v0.1.1...v0.2.0
 [0.1.1]: https://github.com/yasyf/cc-vigil/releases/tag/v0.1.1
 [0.1.0]: https://github.com/yasyf/cc-vigil/releases/tag/v0.1.0
