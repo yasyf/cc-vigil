@@ -30,6 +30,7 @@ actor DaemonCore {
     private var battery: BatteryReading?
     private var appliedBlocked = false
     private var pushedDesired: Bool?
+    private var reassertGeneration = 0
     private var lastDesired = false
     private var lastPushAt = Date.distantPast
     private var lastBatteryPollAt = Date.distantPast
@@ -143,8 +144,9 @@ actor DaemonCore {
 
     private func clearConfirmed() async -> Bool {
         for attempt in 1 ... Self.clearAttempts {
+            let generation = reassertGeneration
             let outcome = await pusher.push(blocked: false)
-            recordPush(outcome, desired: false)
+            recordPush(outcome, desired: false, generation: generation)
             if case .applied = outcome {
                 return true
             }
@@ -164,8 +166,10 @@ actor DaemonCore {
     /// Folds a helper push outcome into the daemon's view of the block: the
     /// helper's `applied` verdict settles `appliedBlocked` on a reachable reply,
     /// while a failed or unavailable push keeps the last known truth and clears
-    /// the pushed-desired latch so the next tick retries.
-    private func recordPush(_ outcome: BlockPushOutcome, desired: Bool) {
+    /// the pushed-desired latch so the next tick retries. A `forceReassert`/
+    /// `handleWake` that bumped `reassertGeneration` while this push was in flight
+    /// also clears the latch, so the forced re-push survives the completing write.
+    private func recordPush(_ outcome: BlockPushOutcome, desired: Bool, generation: Int) {
         lastPushAt = clock.now
         if helperLink != .dryRun {
             switch outcome {
@@ -190,6 +194,9 @@ actor DaemonCore {
         case let .unavailable(message):
             pushedDesired = nil
             Logger.daemon.info("helper unavailable: \(message, privacy: .public)")
+        }
+        if generation != reassertGeneration {
+            pushedDesired = nil
         }
     }
 
@@ -220,6 +227,7 @@ actor DaemonCore {
         Logger.daemon.info("system powered on: re-asserting and resetting idle baselines")
         record(.wake)
         pushedDesired = nil
+        reassertGeneration += 1
         lastPushAt = .distantPast
         lastBatteryPollAt = .distantPast
         await signal.nudge()
@@ -227,6 +235,7 @@ actor DaemonCore {
 
     func forceReassert() async {
         pushedDesired = nil
+        reassertGeneration += 1
         await signal.nudge()
     }
 
@@ -319,8 +328,9 @@ actor DaemonCore {
         let edge = pushedDesired != desired
         let reconcile = desired && now.timeIntervalSince(lastPushAt) >= Self.reconcileSeconds
         guard edge || reconcile else { return }
+        let generation = reassertGeneration
         let outcome = await pusher.push(blocked: desired)
-        recordPush(outcome, desired: desired)
+        recordPush(outcome, desired: desired, generation: generation)
         if edge {
             let detail = "desired=\(desired) applied=\(appliedBlocked)"
                 + " sessions=\(decision.activeSessions.count)"
