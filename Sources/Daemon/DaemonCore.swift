@@ -29,10 +29,8 @@ actor DaemonCore {
     private var lidClosed = false
     private var battery: BatteryReading?
     private var appliedBlocked = false
-    private var pushedDesired: Bool?
-    private var reassertGeneration = 0
+    private var pushDecider = PushDecider(reconcileSeconds: DaemonCore.reconcileSeconds)
     private var lastDesired = false
-    private var lastPushAt = Date.distantPast
     private var lastBatteryPollAt = Date.distantPast
     private var lastDecision = BlockDecision(shouldBlock: false, activeSessions: [], discounts: [])
     private var lastStatus: StatusReport?
@@ -83,10 +81,13 @@ actor DaemonCore {
         let decision = collectDecision()
         updateLatch(now: now)
         let activeHolds = holds.active(clock: clock)
-        var desired = decision.shouldBlock || !activeHolds.isEmpty
-        if pausedUntil != nil || latch.rejectsAcquire || clearLatch.isClearing {
-            desired = false
-        }
+        let desired = BlockComposition(
+            shouldBlock: decision.shouldBlock,
+            hasActiveHolds: !activeHolds.isEmpty,
+            paused: pausedUntil != nil,
+            latchRejectsAcquire: latch.rejectsAcquire,
+            shuttingDown: clearLatch.isClearing
+        ).desired
         lastDesired = desired
         await pushIfNeeded(desired: desired, decision: decision, now: now)
         publishStatus()
@@ -148,7 +149,7 @@ actor DaemonCore {
 
     private func clearConfirmed() async -> Bool {
         for attempt in 1 ... ClearBudget.attempts {
-            let generation = reassertGeneration
+            let generation = pushDecider.reassertGeneration
             let outcome = await pusher.push(blocked: false)
             recordPush(outcome, desired: false, generation: generation)
             if case .applied = outcome {
@@ -169,12 +170,12 @@ actor DaemonCore {
 
     /// Folds a helper push outcome into the daemon's view of the block: the
     /// helper's `applied` verdict settles `appliedBlocked` on a reachable reply,
-    /// while a failed or unavailable push keeps the last known truth and clears
-    /// the pushed-desired latch so the next tick retries. A `forceReassert`/
-    /// `handleWake` that bumped `reassertGeneration` while this push was in flight
-    /// also clears the latch, so the forced re-push survives the completing write.
+    /// while the push-decision bookkeeping (pushed-desired latch, reconcile
+    /// clock, reassert-generation reentrancy guard) lives in `PushDecider`. A
+    /// settled push records the desire; anything else clears the latch so the
+    /// next tick retries, and a `forceReassert`/`handleWake` that bumped the
+    /// generation mid-await also clears it so the forced re-push survives.
     private func recordPush(_ outcome: BlockPushOutcome, desired: Bool, generation: Int) {
-        lastPushAt = clock.now
         if helperLink != .dryRun {
             switch outcome {
             case .applied, .unsettled:
@@ -183,25 +184,24 @@ actor DaemonCore {
                 helperLink = .unreachable
             }
         }
+        let settled: Bool
         switch outcome {
         case let .applied(applied):
             appliedBlocked = applied
-            pushedDesired = desired
+            settled = true
         case let .unsettled(applied, detail):
             appliedBlocked = applied
-            pushedDesired = nil
+            settled = false
             Logger.daemon.error("sleep block unsettled: \(detail, privacy: .public)")
         case let .failed(message):
             // The push may still have applied; keep the last known truth and retry.
-            pushedDesired = nil
+            settled = false
             Logger.daemon.error("helper push failed: \(message, privacy: .public)")
         case let .unavailable(message):
-            pushedDesired = nil
+            settled = false
             Logger.daemon.info("helper unavailable: \(message, privacy: .public)")
         }
-        if generation != reassertGeneration {
-            pushedDesired = nil
-        }
+        pushDecider.record(desired: desired, settled: settled, generation: generation, at: clock.now)
     }
 
     func encodedStatus() -> Data? {
@@ -230,16 +230,14 @@ actor DaemonCore {
     func handleWake() async {
         Logger.daemon.info("system powered on: re-asserting and resetting idle baselines")
         record(.wake)
-        pushedDesired = nil
-        reassertGeneration += 1
-        lastPushAt = .distantPast
+        pushDecider.forceReassert()
+        pushDecider.resetReconcileClock()
         lastBatteryPollAt = .distantPast
         await signal.nudge()
     }
 
     func forceReassert() async {
-        pushedDesired = nil
-        reassertGeneration += 1
+        pushDecider.forceReassert()
         await signal.nudge()
     }
 
@@ -308,13 +306,10 @@ actor DaemonCore {
     }
 
     private func pushIfNeeded(desired: Bool, decision: BlockDecision, now: Date) async {
-        let edge = pushedDesired != desired
-        let reconcile = desired && now.timeIntervalSince(lastPushAt) >= Self.reconcileSeconds
-        guard edge || reconcile else { return }
-        let generation = reassertGeneration
+        guard let plan = pushDecider.plan(desired: desired, now: now) else { return }
         let outcome = await pusher.push(blocked: desired)
-        recordPush(outcome, desired: desired, generation: generation)
-        if edge {
+        recordPush(outcome, desired: desired, generation: plan.generation)
+        if plan.edge {
             let detail = "desired=\(desired) applied=\(appliedBlocked)"
                 + " sessions=\(decision.activeSessions.count)"
             Logger.daemon.info("block edge: \(detail, privacy: .public)")
