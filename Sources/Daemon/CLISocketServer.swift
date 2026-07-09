@@ -12,15 +12,13 @@ final class CLISocketServer: @unchecked Sendable {
     static let ioTimeoutSeconds = 5
     static let handlerTimeoutSeconds = 10.0
     static let maxSunPathBytes = 104
+    static let maxConcurrentConnections = 8
 
     private let socketPath: String
     private let handler: @Sendable (WireRequest) async -> WireResponse
     private var listenDescriptor: Int32 = -1
     private let acceptQueue = DispatchQueue(label: "dev.yasyf.cc-vigil.cli.accept")
-    private let connectionQueue = DispatchQueue(
-        label: "dev.yasyf.cc-vigil.cli.connection",
-        attributes: .concurrent
-    )
+    private let connections: ConnectionThrottle
 
     init(socketPath: String, handler: @escaping @Sendable (WireRequest) async -> WireResponse) {
         precondition(
@@ -29,6 +27,10 @@ final class CLISocketServer: @unchecked Sendable {
         )
         self.socketPath = socketPath
         self.handler = handler
+        connections = ConnectionThrottle(
+            limit: Self.maxConcurrentConnections,
+            queue: DispatchQueue(label: "dev.yasyf.cc-vigil.cli.connection", attributes: .concurrent)
+        )
     }
 
     func start() throws {
@@ -76,7 +78,7 @@ final class CLISocketServer: @unchecked Sendable {
                 Logger.cli.error("accept failed: errno \(errno, privacy: .public); stopping CLI socket")
                 return
             }
-            connectionQueue.async { [self] in serve(client) }
+            connections.admit { [self] in serve(client) }
         }
     }
 

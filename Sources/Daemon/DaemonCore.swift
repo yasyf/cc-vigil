@@ -25,7 +25,7 @@ actor DaemonCore {
     private var latch: CutoutLatch
     private var helperLink: HelperLink
     private var pausedUntil: Date?
-    private var shuttingDown = false
+    private var clearLatch = ClearLatch()
     private var lidClosed = false
     private var battery: BatteryReading?
     private var appliedBlocked = false
@@ -84,7 +84,7 @@ actor DaemonCore {
         updateLatch(now: now)
         let activeHolds = holds.active(clock: clock)
         var desired = decision.shouldBlock || !activeHolds.isEmpty
-        if pausedUntil != nil || latch.rejectsAcquire || shuttingDown {
+        if pausedUntil != nil || latch.rejectsAcquire || clearLatch.isClearing {
             desired = false
         }
         lastDesired = desired
@@ -93,6 +93,9 @@ actor DaemonCore {
     }
 
     func handle(_ request: WireRequest) async -> WireResponse {
+        // A stray same-user clear is sticky fail-open until restart; any active
+        // work or control op here means this was not an uninstall, so un-latch.
+        clearLatch.fold(request)
         switch request {
         case let .nudge(payload):
             hints.apply(payload, now: clock.now)
@@ -128,11 +131,11 @@ actor DaemonCore {
             await signal.nudge()
             return .ok
         case .clear:
-            // Uninstall's confirmed teardown: stop wanting the block, then push
-            // and confirm a settled clear WHILE the helper is still alive and
-            // registered, so a transient pmset failure or a SIGKILL-truncated
-            // shutdown handler cannot strand disablesleep=1 after bootout.
-            shuttingDown = true
+            // Uninstall's confirmed teardown: the fold above latched the daemon
+            // to stop wanting the block; now push and confirm a settled clear
+            // WHILE the helper is still alive and registered, so a transient
+            // pmset failure or a SIGKILL-truncated shutdown handler cannot strand
+            // disablesleep=1 after bootout.
             let settled = await clearConfirmed()
             await signal.nudge()
             return settled
