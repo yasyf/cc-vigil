@@ -105,13 +105,13 @@ enum DaemonMain {
         do {
             config = try ConfigLoader.load(url: paths.configURL)
         } catch {
-            die("invalid config at \(paths.configURL.path): \(error)")
+            die("cannot read config file at \(paths.configURL.path): \(error)")
         }
         let restored: PersistedState
         do {
             restored = try StateStore.load(url: paths.stateURL) ?? PersistedState(holds: [], pausedUntil: nil)
         } catch {
-            die("unreadable state at \(paths.stateURL.path): \(error)")
+            die("cannot read state file at \(paths.stateURL.path): \(error)")
         }
         let holds = HoldRegistry.restored(
             from: restored.holds,
