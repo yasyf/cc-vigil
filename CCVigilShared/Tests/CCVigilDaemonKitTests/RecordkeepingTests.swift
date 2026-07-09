@@ -69,6 +69,7 @@ private let at = Date(timeIntervalSince1970: 1_767_323_047)
     try corruptBytes.write(to: url)
 
     #expect(try StateStore.load(url: url) == PersistedState(holds: [], pausedUntil: nil))
+    #expect(!FileManager.default.fileExists(atPath: url.path))
 
     let quarantine = url.appendingPathExtension("corrupt")
     #expect(try Data(contentsOf: quarantine) == corruptBytes)
@@ -116,14 +117,18 @@ private let at = Date(timeIntervalSince1970: 1_767_323_047)
     "{\"batteryFloorPercent\":99}",
     "{\"pollIdleSeconds\":0}",
 ])
-func configLoaderFailsFastOnInvalidConfig(contents: String) throws {
+func configLoaderQuarantinesInvalidConfig(contents: String) throws {
     let directory = try temporaryDirectory()
     defer { try? FileManager.default.removeItem(at: directory) }
     let url = directory.appendingPathComponent("config.json")
-    try Data(contents.utf8).write(to: url)
-    #expect(throws: Error.self) {
-        try ConfigLoader.load(url: url)
-    }
+    let corruptBytes = Data(contents.utf8)
+    try corruptBytes.write(to: url)
+
+    #expect(try ConfigLoader.load(url: url) == .default)
+    #expect(!FileManager.default.fileExists(atPath: url.path))
+
+    let quarantine = url.appendingPathExtension("corrupt")
+    #expect(try Data(contentsOf: quarantine) == corruptBytes)
 }
 
 @Test func configLoaderSaveRoundTripsNonDefaults() throws {
