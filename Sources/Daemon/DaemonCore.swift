@@ -256,7 +256,7 @@ actor DaemonCore {
             let collection = oracle.collect(config: config, clock: clock)
             for failure in collection.newFailures {
                 let detail = "\(failure.path): \(failure.message)"
-                Logger.daemon.fault("transcript probe failed, skipping \(detail, privacy: .public)")
+                Logger.daemon.fault("transcript probe failed, held via last-good/recency \(detail, privacy: .public)")
                 record(.probeFailed(path: failure.path, message: failure.message))
             }
             probes = collection.probes

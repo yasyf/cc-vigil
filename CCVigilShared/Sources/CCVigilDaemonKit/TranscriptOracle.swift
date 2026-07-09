@@ -60,10 +60,25 @@ public final class TranscriptOracle {
             case let .probed(probe):
                 probes.append(probe)
             case .failed:
-                probes.append(Self.recencyProbe(for: entry))
+                if let lastGood = cache.lastKnownGood(forPath: entry.path) {
+                    probes.append(Self.reassertedProbe(from: lastGood, entry: entry))
+                } else {
+                    probes.append(Self.recencyProbe(for: entry))
+                }
             }
         }
         return OracleCollection(probes: probes, newFailures: newFailures)
+    }
+
+    private static func reassertedProbe(from lastGood: SessionProbe, entry: TranscriptFileEntry) -> SessionProbe {
+        let mtimeEpoch = Int64(entry.mtime.timeIntervalSince1970)
+        return SessionProbe(
+            sessionPath: entry.path,
+            isWaiting: lastGood.isWaiting,
+            midTool: lastGood.midTool,
+            lastEventEpoch: lastGood.lastEventEpoch.map { max($0, mtimeEpoch) } ?? mtimeEpoch,
+            pending: lastGood.pending
+        )
     }
 
     private static func recencyProbe(for entry: TranscriptFileEntry) -> SessionProbe {

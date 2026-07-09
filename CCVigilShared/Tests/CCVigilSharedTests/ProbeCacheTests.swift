@@ -69,3 +69,29 @@ func missesWhenKeyComponentChanges(component: String, changed: ProbeCache.Key) {
     #expect(cache.outcome(for: key(path: "/t/a.jsonl")) == nil)
     #expect(cache.outcome(for: key(path: "/t/b.jsonl")) == .probed(probe(path: "/t/b.jsonl")))
 }
+
+@Test func missesLastKnownGoodOnEmptyCache() {
+    let cache = ProbeCache()
+    #expect(cache.lastKnownGood(forPath: "/t/a.jsonl") == nil)
+}
+
+@Test func lastKnownGoodSurvivesAFailedStoreForTheSamePath() {
+    var cache = ProbeCache()
+    cache.store(.probed(probe(epoch: 100)), for: key(mtime: 1000, size: 64))
+    #expect(cache.lastKnownGood(forPath: "/t/a.jsonl") == probe(epoch: 100))
+
+    // A later failure under a fresh key (grown file) must not clobber the last
+    // good probe: it is the explicit parse-failure fallback.
+    cache.store(.failed(message: "poison"), for: key(mtime: 2000, size: 96))
+    #expect(cache.outcome(for: key(mtime: 2000, size: 96)) == .failed(message: "poison"))
+    #expect(cache.lastKnownGood(forPath: "/t/a.jsonl") == probe(epoch: 100))
+}
+
+@Test func retainDropsLastKnownGoodForUndiscoveredPaths() {
+    var cache = ProbeCache()
+    cache.store(.probed(probe(path: "/t/a.jsonl")), for: key(path: "/t/a.jsonl"))
+    cache.store(.probed(probe(path: "/t/b.jsonl")), for: key(path: "/t/b.jsonl"))
+    cache.retain(paths: ["/t/b.jsonl"])
+    #expect(cache.lastKnownGood(forPath: "/t/a.jsonl") == nil)
+    #expect(cache.lastKnownGood(forPath: "/t/b.jsonl") == probe(path: "/t/b.jsonl"))
+}

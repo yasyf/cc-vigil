@@ -216,3 +216,53 @@ import Testing
     ).decision(config: .default, clock: clock)
     #expect(decision == BlockDecision(shouldBlock: false, activeSessions: [], discounts: []))
 }
+
+@Test func failedProbeAfterAGoodMidToolReusesTheLastKnownGoodAndStaysActive() throws {
+    let transcripts = try TranscriptsRoot()
+    defer { transcripts.tearDown() }
+    let session = try transcripts.install(fixture: "mid-tool", as: "session.jsonl")
+
+    // First pass parses cleanly: the mid-tool probe is cached as last-known-good.
+    let oracle = TranscriptOracle(root: transcripts.root)
+    let good = oracle.collect(config: .default, clock: FixedClock(epoch: fixtureLastEventEpoch + 60))
+    #expect(good.newFailures == [])
+    #expect(good.probes == [SessionProbe(
+        sessionPath: session.path,
+        isWaiting: false,
+        midTool: true,
+        lastEventEpoch: fixtureLastEventEpoch,
+        pending: [PendingItem(toolUseID: "b1", name: "Bash", kind: .midTool)]
+    )])
+
+    // A poison line lands in the transcript, so it no longer parses. The session
+    // wrote its tool_use then went quiet on a long build: its mtime stays put.
+    let malformedLine = try String(contentsOf: fixtureURL("malformed"), encoding: .utf8)
+    let poisoned = try String(contentsOf: session, encoding: .utf8) + "\n" + malformedLine
+    try Data(poisoned.utf8).write(to: session)
+    try transcripts.setMtime(session, epoch: fixtureLastEventEpoch)
+
+    // 301s later: past the 5-min recency window but well inside the 12h mid-tool
+    // cap. The last-known-good mid-tool probe must hold the session active.
+    let clock = FixedClock(epoch: fixtureLastEventEpoch + 301)
+    let collection = oracle.collect(config: .default, clock: clock)
+    #expect(collection.newFailures.count == 1)
+    #expect(collection.probes == [SessionProbe(
+        sessionPath: session.path,
+        isWaiting: false,
+        midTool: true,
+        lastEventEpoch: fixtureLastEventEpoch,
+        pending: [PendingItem(toolUseID: "b1", name: "Bash", kind: .midTool)]
+    )])
+
+    let decision = OracleState(
+        sessions: collection.probes,
+        humanWaitHints: [:],
+        backgroundWork: [:],
+        claudeProcessesAlive: true
+    ).decision(config: .default, clock: clock)
+    #expect(decision == BlockDecision(
+        shouldBlock: true,
+        activeSessions: [ActiveSession(path: session.path, reasons: [.midTool])],
+        discounts: []
+    ))
+}

@@ -26,6 +26,7 @@ public struct ProbeCache: Equatable, Sendable {
     }
 
     private var entries: [String: Entry] = [:]
+    private var lastGood: [String: SessionProbe] = [:]
 
     public init() {}
 
@@ -38,11 +39,19 @@ public struct ProbeCache: Equatable, Sendable {
         return entry.outcome
     }
 
+    public func lastKnownGood(forPath path: String) -> SessionProbe? {
+        lastGood[path]
+    }
+
     public mutating func store(_ outcome: Outcome, for key: Key) {
         entries[key.path] = Entry(key: key, outcome: outcome)
+        if case let .probed(probe) = outcome {
+            lastGood[key.path] = probe
+        }
     }
 
     public mutating func retain(paths: Set<String>) {
         entries = entries.filter { paths.contains($0.key) }
+        lastGood = lastGood.filter { paths.contains($0.key) }
     }
 }
