@@ -56,7 +56,7 @@ func configRejectsOutOfRange(field: String, value: String, allowed: String) {
 @Test func pollBlockingStaysUnderTheAssertionDeadMan() {
     let worstCaseReArmInterval = Double(VigilConfig.pollBlockingSecondsRange.upperBound)
         + ClearBudget.helperCallSeconds
-    #expect(worstCaseReArmInterval < IdleAssertionDescriptor.ccVigil.timeout)
+    #expect(worstCaseReArmInterval < IdleAssertionDescriptor.deadManTimeout)
 }
 
 @Test func configDecodesEmptyObjectToDefaults() throws {

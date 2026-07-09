@@ -8,3 +8,7 @@ struct FixedClock: WallClock {
         now = Date(timeIntervalSince1970: TimeInterval(epoch))
     }
 }
+
+extension IdleAssertionDescriptor {
+    static let test = IdleAssertionDescriptor.ccVigil(localizationBundlePath: "/Applications/CCVigil.app")
+}

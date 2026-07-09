@@ -83,7 +83,7 @@ private final class SequencedClamshell: ClamshellControlling, @unchecked Sendabl
         .exited(status: 1, stderr: "needs root"),
         .exited(status: 0, stderr: ""),
     ])
-    let blocker = SleepBlocker(assertion: NoopAssertion(), clamshell: clamshell)
+    let blocker = SleepBlocker(assertion: NoopAssertion(), clamshell: clamshell, descriptor: .test)
     let schedules = OSAllocatedUnfairLock(initialState: 0)
     SelfHealingClear(
         attemptClear: { blocker.setBlocked(false).state.isSettled },

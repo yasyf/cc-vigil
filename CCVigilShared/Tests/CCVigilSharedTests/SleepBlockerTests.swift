@@ -1,4 +1,5 @@
 import CCVigilShared
+import Foundation
 import Testing
 
 private final class FakeIdleAssertion: IdleAssertionControlling {
@@ -50,8 +51,12 @@ private final class SequencedClamshell: ClamshellControlling {
     }
 }
 
+private func helperExecutable(inAppAt appPath: String) -> URL {
+    URL(fileURLWithPath: "\(appPath)/Contents/Library/LaunchDaemons/CCVigilHelper")
+}
+
 @Test func blockerStartsUnknownAndNotBlocking() {
-    let blocker = SleepBlocker(assertion: FakeIdleAssertion(), clamshell: FakeClamshell())
+    let blocker = SleepBlocker(assertion: FakeIdleAssertion(), clamshell: FakeClamshell(), descriptor: .test)
     #expect(blocker.state == SleepBlockState(desired: false, assertionHeld: false, pmsetDisableSleep: nil))
     #expect(blocker.isBlocking == false)
 }
@@ -59,7 +64,7 @@ private final class SequencedClamshell: ClamshellControlling {
 @Test func blockerAppliesAssertionAndPmsetOnBlock() {
     let assertion = FakeIdleAssertion()
     let clamshell = FakeClamshell()
-    let blocker = SleepBlocker(assertion: assertion, clamshell: clamshell)
+    let blocker = SleepBlocker(assertion: assertion, clamshell: clamshell, descriptor: .test)
     let report = blocker.setBlocked(true)
     #expect(report == SleepBlockReport(
         state: SleepBlockState(desired: true, assertionHeld: true, pmsetDisableSleep: true),
@@ -74,16 +79,32 @@ private final class SequencedClamshell: ClamshellControlling {
 
 @Test func blockCarriesAttributedAssertionProperties() {
     let assertion = FakeIdleAssertion()
-    let blocker = SleepBlocker(assertion: assertion, clamshell: FakeClamshell())
+    let descriptor = IdleAssertionDescriptor.ccVigil(
+        localizationBundlePath: IdleAssertionDescriptor.appBundlePath(
+            forHelperExecutableAt: helperExecutable(inAppAt: "/Applications/CCVigil.app")
+        )
+    )
+    let blocker = SleepBlocker(assertion: assertion, clamshell: FakeClamshell(), descriptor: descriptor)
     _ = blocker.setBlocked(true)
-    #expect(assertion.creates == [.ccVigil])
-    let descriptor = assertion.creates[0]
-    #expect(descriptor.type == .preventUserIdleSystemSleep)
-    #expect(descriptor.name == "cc-vigil: agents active")
-    #expect(descriptor.reason == "Claude Code agents are working; cc-vigil is holding the system awake")
-    #expect(descriptor.details == "cc-vigil helper")
-    #expect(descriptor.timeout == 900)
-    #expect(descriptor.timeoutAction == .release)
+    #expect(assertion.creates == [descriptor])
+    let recorded = assertion.creates[0]
+    #expect(recorded.type == .preventUserIdleSystemSleep)
+    #expect(recorded.name == "cc-vigil: agents active")
+    #expect(recorded.reason == "Claude Code agents are working; cc-vigil is holding the system awake")
+    #expect(recorded.details == "cc-vigil helper")
+    #expect(recorded.localizationBundlePath == "/Applications/CCVigil.app")
+    #expect(recorded.timeout == 900)
+    #expect(recorded.timeoutAction == .release)
+}
+
+@Test(arguments: [
+    "/Applications/CCVigil.app",
+    "/Users/ada/Applications/CCVigil.app",
+    "/Volumes/CCVigil/CCVigil.app",
+])
+func appBundlePathWalksUpToTheEnclosingAppBundle(appPath: String) {
+    let derived = IdleAssertionDescriptor.appBundlePath(forHelperExecutableAt: helperExecutable(inAppAt: appPath))
+    #expect(derived == appPath)
 }
 
 @Test func blockForwardsConfiguredDescriptor() {
@@ -93,6 +114,7 @@ private final class SequencedClamshell: ClamshellControlling {
         name: "custom",
         reason: "custom reason",
         details: "custom details",
+        localizationBundlePath: "/custom/Bundle.app",
         timeout: 42,
         timeoutAction: .release
     )
@@ -104,10 +126,10 @@ private final class SequencedClamshell: ClamshellControlling {
 @Test func repeatedBlockReArmsAssertionWithoutLeaking() {
     let assertion = FakeIdleAssertion()
     let clamshell = FakeClamshell()
-    let blocker = SleepBlocker(assertion: assertion, clamshell: clamshell)
+    let blocker = SleepBlocker(assertion: assertion, clamshell: clamshell, descriptor: .test)
     _ = blocker.setBlocked(true)
     _ = blocker.setBlocked(true)
-    #expect(assertion.creates == [.ccVigil, .ccVigil])
+    #expect(assertion.creates == [.test, .test])
     #expect(assertion.liveCount == 1)
     #expect(assertion.releaseCalls == 0)
     #expect(clamshell.calls == [true, true])
@@ -121,7 +143,7 @@ private final class SequencedClamshell: ClamshellControlling {
 @Test func blockerReleasesAndClearsOnUnblock() {
     let assertion = FakeIdleAssertion()
     let clamshell = FakeClamshell()
-    let blocker = SleepBlocker(assertion: assertion, clamshell: clamshell)
+    let blocker = SleepBlocker(assertion: assertion, clamshell: clamshell, descriptor: .test)
     _ = blocker.setBlocked(true)
     let report = blocker.setBlocked(false)
     #expect(report.state == SleepBlockState(desired: false, assertionHeld: false, pmsetDisableSleep: false))
@@ -134,7 +156,7 @@ private final class SequencedClamshell: ClamshellControlling {
 @Test func blockerForceClearsEvenWhenNeverBlocked() {
     let assertion = FakeIdleAssertion()
     let clamshell = FakeClamshell()
-    let blocker = SleepBlocker(assertion: assertion, clamshell: clamshell)
+    let blocker = SleepBlocker(assertion: assertion, clamshell: clamshell, descriptor: .test)
     let report = blocker.setBlocked(false)
     #expect(report.state == SleepBlockState(desired: false, assertionHeld: false, pmsetDisableSleep: false))
     #expect(assertion.releaseCalls == 1)
@@ -149,7 +171,7 @@ private final class SequencedClamshell: ClamshellControlling {
 func blockerPmsetFailureLeavesUnsettledUnknown(failure: PmsetRunResult) {
     let clamshell = FakeClamshell()
     clamshell.result = failure
-    let blocker = SleepBlocker(assertion: FakeIdleAssertion(), clamshell: clamshell)
+    let blocker = SleepBlocker(assertion: FakeIdleAssertion(), clamshell: clamshell, descriptor: .test)
     let report = blocker.setBlocked(true)
     #expect(report.state == SleepBlockState(desired: true, assertionHeld: true, pmsetDisableSleep: nil))
     #expect(report.state.isSettled == false)
@@ -160,7 +182,7 @@ func blockerPmsetFailureLeavesUnsettledUnknown(failure: PmsetRunResult) {
 @Test func blockerAssertionFailureLeavesUnsettled() {
     let assertion = FakeIdleAssertion()
     assertion.createResult = false
-    let blocker = SleepBlocker(assertion: assertion, clamshell: FakeClamshell())
+    let blocker = SleepBlocker(assertion: assertion, clamshell: FakeClamshell(), descriptor: .test)
     let report = blocker.setBlocked(true)
     #expect(report.state == SleepBlockState(desired: true, assertionHeld: false, pmsetDisableSleep: true))
     #expect(report.state.isSettled == false)
@@ -172,7 +194,7 @@ func blockerPmsetFailureLeavesUnsettledUnknown(failure: PmsetRunResult) {
         .exited(status: 1, stderr: "resource busy"),
         .exited(status: 0, stderr: ""),
     ])
-    let blocker = SleepBlocker(assertion: FakeIdleAssertion(), clamshell: clamshell)
+    let blocker = SleepBlocker(assertion: FakeIdleAssertion(), clamshell: clamshell, descriptor: .test)
     var naps = 0
     let (report, attempts) = blocker.clearUntilSettled(maxAttempts: 4, nap: { _ in naps += 1 })
     #expect(attempts == 2)
@@ -185,7 +207,7 @@ func blockerPmsetFailureLeavesUnsettledUnknown(failure: PmsetRunResult) {
 
 @Test func clearUntilSettledStopsAtBudgetWhenNeverSettling() {
     let clamshell = SequencedClamshell([.launchFailed(message: "ENOENT")])
-    let blocker = SleepBlocker(assertion: FakeIdleAssertion(), clamshell: clamshell)
+    let blocker = SleepBlocker(assertion: FakeIdleAssertion(), clamshell: clamshell, descriptor: .test)
     var naps = 0
     let (report, attempts) = blocker.clearUntilSettled(maxAttempts: 3, nap: { _ in naps += 1 })
     #expect(attempts == 3)
@@ -199,7 +221,7 @@ func blockerPmsetFailureLeavesUnsettledUnknown(failure: PmsetRunResult) {
         .exited(status: 1, stderr: "resource busy"),
         .exited(status: 0, stderr: ""),
     ])
-    let blocker = SleepBlocker(assertion: FakeIdleAssertion(), clamshell: clamshell)
+    let blocker = SleepBlocker(assertion: FakeIdleAssertion(), clamshell: clamshell, descriptor: .test)
     #expect(blocker.needsClear == true)
     let (report, attempts) = blocker.clearUntilSettled(maxAttempts: 4, nap: { _ in })
     #expect(attempts == 2)
@@ -209,7 +231,7 @@ func blockerPmsetFailureLeavesUnsettledUnknown(failure: PmsetRunResult) {
 
 @Test func needsClearStaysTrueWhenBootClearNeverSettles() {
     let clamshell = SequencedClamshell([.launchFailed(message: "ENOENT")])
-    let blocker = SleepBlocker(assertion: FakeIdleAssertion(), clamshell: clamshell)
+    let blocker = SleepBlocker(assertion: FakeIdleAssertion(), clamshell: clamshell, descriptor: .test)
     let (report, attempts) = blocker.clearUntilSettled(maxAttempts: 4, nap: { _ in })
     #expect(attempts == 4)
     #expect(report.state.isSettled == false)

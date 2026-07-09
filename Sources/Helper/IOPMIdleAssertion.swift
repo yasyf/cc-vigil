@@ -15,7 +15,7 @@ final class IOPMIdleAssertion: IdleAssertionControlling {
             descriptor.name as CFString,
             descriptor.details as CFString,
             descriptor.reason as CFString,
-            nil,
+            descriptor.localizationBundlePath as CFString,
             descriptor.timeout,
             descriptor.timeoutAction.ioKitTimeoutAction,
             &created

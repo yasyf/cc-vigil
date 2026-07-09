@@ -28,7 +28,7 @@ public final class SleepBlocker: Sendable {
     public init(
         assertion: any IdleAssertionControlling,
         clamshell: any ClamshellControlling,
-        descriptor: IdleAssertionDescriptor = .ccVigil
+        descriptor: IdleAssertionDescriptor
     ) {
         mechanisms = OSAllocatedUnfairLock(uncheckedState: Mechanisms(
             policy: SleepBlockPolicy(),

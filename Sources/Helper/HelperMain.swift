@@ -18,9 +18,16 @@ enum HelperMain {
         guard let version = Bundle.main.infoDictionary?["CFBundleShortVersionString"] as? String else {
             fatalError("CCVigilHelper: CFBundleShortVersionString missing from the embedded Info.plist")
         }
+        guard let executableURL = Bundle.main.executableURL else {
+            fatalError("CCVigilHelper: Bundle.main.executableURL missing")
+        }
+        let descriptor = IdleAssertionDescriptor.ccVigil(
+            localizationBundlePath: IdleAssertionDescriptor.appBundlePath(forHelperExecutableAt: executableURL)
+        )
         let blocker = SleepBlocker(
             assertion: IOPMIdleAssertion(),
-            clamshell: PmsetClamshellControl(launcher: SystemPmsetLauncher())
+            clamshell: PmsetClamshellControl(launcher: SystemPmsetLauncher()),
+            descriptor: descriptor
         )
 
         let (initialReport, initialAttempts) = blocker.clearUntilSettled(
