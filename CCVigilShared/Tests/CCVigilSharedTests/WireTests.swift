@@ -80,12 +80,15 @@ func frameDecodeNeedsMoreBytes(available: Int) throws {
         sessionId: "s1",
         hookEvent: "Stop",
         notificationKind: "permission",
-        claudePid: 123
+        claudePid: 123,
+        backgroundTasks: 2,
+        sessionCrons: 1
     ))
     let expectations: [(WireRequest, String)] = [
         (
             fullNudge,
-            #"{"claudePid":123,"hookEvent":"Stop","notificationKind":"permission","op":"nudge","sessionId":"s1"}"#
+            #"{"backgroundTasks":2,"claudePid":123,"hookEvent":"Stop","notificationKind":"permission","#
+                + #""op":"nudge","sessionCrons":1,"sessionId":"s1"}"#
         ),
         (.nudge(NudgePayload()), #"{"op":"nudge"}"#),
         (.status, #"{"op":"status"}"#),
@@ -108,6 +111,7 @@ func frameDecodeNeedsMoreBytes(available: Int) throws {
 
 @Test(arguments: [
     WireRequest.nudge(NudgePayload(sessionId: "s1", hookEvent: "Stop", notificationKind: "idle", claudePid: 9)),
+    .nudge(NudgePayload(sessionId: "s1", hookEvent: "Stop", claudePid: 9, backgroundTasks: 3, sessionCrons: 2)),
     .nudge(NudgePayload()),
     .status,
     .hold(key: "k", reason: "r", ttlSeconds: 600, pid: 42),

@@ -21,6 +21,7 @@ actor DaemonCore {
     private let batterySampler: @Sendable () -> BatteryReading?
 
     private var hints = HintTracker()
+    private var backgroundWork = BackgroundWorkTracker()
     private var holds: HoldRegistry
     private var latch: CutoutLatch
     private var helperLink: HelperLink
@@ -96,6 +97,7 @@ actor DaemonCore {
         switch request {
         case let .nudge(payload):
             hints.apply(payload, now: clock.now)
+            backgroundWork.apply(payload, now: clock.now)
             await signal.nudge()
             return .ok
         case .status:
@@ -259,37 +261,16 @@ actor DaemonCore {
             }
             probes = collection.probes
         }
+        let paths = probes.map(\.sessionPath)
         let decision = OracleState(
             sessions: probes,
-            humanWaitHints: hints.hints(forPaths: probes.map(\.sessionPath)),
+            humanWaitHints: hints.hints(forPaths: paths),
+            backgroundWork: backgroundWork.reports(forPaths: paths),
             claudeProcessesAlive: alive
         ).decision(config: config, clock: clock)
         logFreshDiscounts(decision)
         lastDecision = decision
         return decision
-    }
-
-    private func logFreshDiscounts(_ decision: BlockDecision) {
-        for discount in decision.discounts where !lastDecision.discounts.contains(discount) {
-            switch discount.reason {
-            case .pendingAsyncMaxAge:
-                let detail = "\(discount.path): pending async work with no transcript advance"
-                    + " in over \(config.pendingAsyncMaxAgeSeconds)s"
-                Logger.daemon.fault(
-                    "pending-async max-age backstop discounted \(detail, privacy: .public)"
-                )
-            case .staleActivityMaxAge:
-                let detail = "\(discount.path): mid-tool/waiting session treated as leaked or dead —"
-                    + " no transcript advance in over \(config.pendingAsyncMaxAgeSeconds)s"
-                Logger.daemon.fault(
-                    "stale-activity max-age backstop discounted \(detail, privacy: .public)"
-                )
-            case .humanWaitHint:
-                Logger.daemon.info(
-                    "human-wait hint discounted \(discount.path, privacy: .public)"
-                )
-            }
-        }
     }
 
     private func updateLatch(now: Date) {
@@ -386,6 +367,31 @@ actor DaemonCore {
             try eventLog.append(EventRecord(at: clock.now, event: event))
         } catch {
             Logger.daemon.fault("event log append failed: \(String(describing: error), privacy: .public)")
+        }
+    }
+}
+
+private extension DaemonCore {
+    func logFreshDiscounts(_ decision: BlockDecision) {
+        for discount in decision.discounts where !lastDecision.discounts.contains(discount) {
+            switch discount.reason {
+            case .pendingAsyncMaxAge:
+                let detail = "\(discount.path): pending async work with no transcript advance"
+                    + " in over \(config.pendingAsyncMaxAgeSeconds)s"
+                Logger.daemon.fault(
+                    "pending-async max-age backstop discounted \(detail, privacy: .public)"
+                )
+            case .staleActivityMaxAge:
+                let detail = "\(discount.path): mid-tool/waiting session treated as leaked or dead —"
+                    + " no transcript advance in over \(config.pendingAsyncMaxAgeSeconds)s"
+                Logger.daemon.fault(
+                    "stale-activity max-age backstop discounted \(detail, privacy: .public)"
+                )
+            case .humanWaitHint:
+                Logger.daemon.info(
+                    "human-wait hint discounted \(discount.path, privacy: .public)"
+                )
+            }
         }
     }
 }

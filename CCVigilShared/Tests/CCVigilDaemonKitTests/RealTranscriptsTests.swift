@@ -30,6 +30,7 @@ import Testing
     let decision = OracleState(
         sessions: collection.probes,
         humanWaitHints: [:],
+        backgroundWork: [:],
         claudeProcessesAlive: true
     ).decision(config: .default, clock: clock)
     #expect(decision.activeSessions.count + decision.discounts.count <= collection.probes.count * 2)

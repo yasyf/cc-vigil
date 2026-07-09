@@ -24,11 +24,17 @@ private func probe(
 private func decide(
     _ sessions: [SessionProbe],
     hints: [String: Int64] = [:],
+    backgroundWork: [String: BackgroundWorkReport] = [:],
     processesAlive: Bool = true,
     config: VigilConfig = .default
 ) -> BlockDecision {
-    OracleState(sessions: sessions, humanWaitHints: hints, claudeProcessesAlive: processesAlive)
-        .decision(config: config, clock: clock)
+    OracleState(
+        sessions: sessions,
+        humanWaitHints: hints,
+        backgroundWork: backgroundWork,
+        claudeProcessesAlive: processesAlive
+    )
+    .decision(config: config, clock: clock)
 }
 
 private func asyncPending(_ kind: PendingKind = .pendingAsyncWorkflow) -> PendingItem {

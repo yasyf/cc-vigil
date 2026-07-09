@@ -51,6 +51,7 @@ public enum ActivityReason: String, Codable, Equatable, Sendable {
     case recentActivity = "recent-activity"
     case midTool = "mid-tool"
     case waiting
+    case backgroundWork = "background-work"
 }
 
 public enum DiscountReason: String, Codable, Equatable, Sendable {
@@ -94,11 +95,18 @@ public struct BlockDecision: Codable, Equatable, Sendable {
 public struct OracleState: Equatable, Sendable {
     public let sessions: [SessionProbe]
     public let humanWaitHints: [String: Int64]
+    public let backgroundWork: [String: BackgroundWorkReport]
     public let claudeProcessesAlive: Bool
 
-    public init(sessions: [SessionProbe], humanWaitHints: [String: Int64], claudeProcessesAlive: Bool) {
+    public init(
+        sessions: [SessionProbe],
+        humanWaitHints: [String: Int64],
+        backgroundWork: [String: BackgroundWorkReport],
+        claudeProcessesAlive: Bool
+    ) {
         self.sessions = sessions
         self.humanWaitHints = humanWaitHints
+        self.backgroundWork = backgroundWork
         self.claudeProcessesAlive = claudeProcessesAlive
     }
 
@@ -136,8 +144,16 @@ public struct OracleState: Equatable, Sendable {
         // no machine work pending: a genuinely parked prompt (AskUserQuestion and
         // ExitPlanMode never register as pending) or a leaked session the
         // stale-activity backstop already owns.
+        //
+        // Hook-reported background work is machine-driven pending the transcript
+        // cannot see (H2): Stop's background_tasks/session_crons survive across
+        // turn boundaries, so the report holds the block through new prompts and
+        // idle hints alike, bounded by the same max-age cliff via its own epoch.
+        let liveBackgroundWork = backgroundWork[session.sessionPath]
+            .map { now - $0.epoch <= Int64(config.pendingAsyncMaxAgeSeconds) } ?? false
+        let machineDriven = liveBackgroundWork || hasMachineDrivenPending(session)
         let hint = humanWaitHints[session.sessionPath]
-        if !hasMachineDrivenPending(session), let hint, hint > session.lastEventEpoch ?? .min {
+        if !machineDriven, let hint, hint > session.lastEventEpoch ?? .min {
             return ([], .humanWaitHint)
         }
         var reasons: [ActivityReason] = []
@@ -167,6 +183,9 @@ public struct OracleState: Equatable, Sendable {
             } else if discount == nil {
                 discount = hasOnlyPendingAsync(session) ? .pendingAsyncMaxAge : .staleActivityMaxAge
             }
+        }
+        if liveBackgroundWork {
+            reasons.append(.backgroundWork)
         }
         return (reasons, discount)
     }

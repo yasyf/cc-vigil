@@ -25,7 +25,9 @@ public enum HookInput {
             sessionId: object["session_id"] as? String,
             hookEvent: object["hook_event_name"] as? String,
             notificationKind: object["notification_type"] as? String,
-            claudePid: claudePid
+            claudePid: claudePid,
+            backgroundTasks: (object["background_tasks"] as? [Any])?.count,
+            sessionCrons: (object["session_crons"] as? [Any])?.count
         )
     }
 }

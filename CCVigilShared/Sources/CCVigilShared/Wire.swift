@@ -37,17 +37,23 @@ public struct NudgePayload: Codable, Equatable, Sendable {
     public let hookEvent: String?
     public let notificationKind: String?
     public let claudePid: Int32?
+    public let backgroundTasks: Int?
+    public let sessionCrons: Int?
 
     public init(
         sessionId: String? = nil,
         hookEvent: String? = nil,
         notificationKind: String? = nil,
-        claudePid: Int32? = nil
+        claudePid: Int32? = nil,
+        backgroundTasks: Int? = nil,
+        sessionCrons: Int? = nil
     ) {
         self.sessionId = sessionId
         self.hookEvent = hookEvent
         self.notificationKind = notificationKind
         self.claudePid = claudePid
+        self.backgroundTasks = backgroundTasks
+        self.sessionCrons = sessionCrons
     }
 }
 
@@ -64,7 +70,8 @@ public enum WireRequest: Equatable, Sendable {
 extension WireRequest: Codable {
     private enum CodingKeys: String, CodingKey {
         case operation = "op"
-        case sessionId, hookEvent, notificationKind, claudePid, key, reason, ttlSeconds, pid, seconds
+        case sessionId, hookEvent, notificationKind, claudePid, backgroundTasks, sessionCrons
+        case key, reason, ttlSeconds, pid, seconds
     }
 
     private enum Operation: String, Codable {
@@ -79,7 +86,9 @@ extension WireRequest: Codable {
                 sessionId: container.decodeIfPresent(String.self, forKey: .sessionId),
                 hookEvent: container.decodeIfPresent(String.self, forKey: .hookEvent),
                 notificationKind: container.decodeIfPresent(String.self, forKey: .notificationKind),
-                claudePid: container.decodeIfPresent(Int32.self, forKey: .claudePid)
+                claudePid: container.decodeIfPresent(Int32.self, forKey: .claudePid),
+                backgroundTasks: container.decodeIfPresent(Int.self, forKey: .backgroundTasks),
+                sessionCrons: container.decodeIfPresent(Int.self, forKey: .sessionCrons)
             ))
         case .status:
             self = .status
@@ -110,6 +119,8 @@ extension WireRequest: Codable {
             try container.encodeIfPresent(payload.hookEvent, forKey: .hookEvent)
             try container.encodeIfPresent(payload.notificationKind, forKey: .notificationKind)
             try container.encodeIfPresent(payload.claudePid, forKey: .claudePid)
+            try container.encodeIfPresent(payload.backgroundTasks, forKey: .backgroundTasks)
+            try container.encodeIfPresent(payload.sessionCrons, forKey: .sessionCrons)
         case .status:
             try container.encode(Operation.status, forKey: .operation)
         case let .hold(key, reason, ttlSeconds, pid):

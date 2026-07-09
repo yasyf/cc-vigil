@@ -52,6 +52,7 @@ private let oracleNow: Int64 = 1_800_000_000
         OracleState(
             sessions: [probe],
             humanWaitHints: tracker.hints(forPaths: [path]),
+            backgroundWork: [:],
             claudeProcessesAlive: true
         ).decision(config: .default, clock: clock)
     }

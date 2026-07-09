@@ -18,6 +18,18 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   waits on the daemon's reply. Existing installs pick up the new hook the next
   time the app runs its installer, or when you run `cc-vigil install-hooks`;
   there is no back-compat shim.
+- Background work that outlives its turn — a `run_in_background` build, a
+  detached subagent, or a session cron — now holds the sleep block across new
+  prompts and auto-compaction. Such work never advances the transcript, so a
+  quick follow-up question moved it out of the oracle's view: nothing pended,
+  the idle hint discounted the session, and the Mac slept mid-build. Claude
+  Code v2.1.145+ reports the still-running work on every `Stop`/`SubagentStop`
+  payload (`background_tasks`/`session_crons`); the nudge now forwards those
+  counts and the oracle pins the session awake — immune to the idle hint —
+  until a later stop reports none, bounded by the pending-async max-age
+  backstop. The bumped cc-transcript pin brings the matching delivery-aware
+  oracle: async completions count when their notification is delivered, not
+  when it is enqueued.
 
 ## [0.1.1] - 2026-07-08
 

@@ -19,6 +19,7 @@ import Testing
     let decision = OracleState(
         sessions: collection.probes,
         humanWaitHints: [:],
+        backgroundWork: [:],
         claudeProcessesAlive: true
     ).decision(config: .default, clock: clock)
     #expect(decision == BlockDecision(
@@ -43,6 +44,7 @@ import Testing
     let decision = OracleState(
         sessions: collection.probes,
         humanWaitHints: [:],
+        backgroundWork: [:],
         claudeProcessesAlive: true
     ).decision(config: .default, clock: clock)
     #expect(decision == BlockDecision(shouldBlock: false, activeSessions: [], discounts: []))
@@ -60,6 +62,7 @@ import Testing
     let decision = OracleState(
         sessions: collection.probes,
         humanWaitHints: [:],
+        backgroundWork: [:],
         claudeProcessesAlive: true
     ).decision(config: .default, clock: clock)
     #expect(decision == BlockDecision(
@@ -85,6 +88,7 @@ import Testing
     let decision = OracleState(
         sessions: collection.probes,
         humanWaitHints: tracker.hints(forPaths: collection.probes.map(\.sessionPath)),
+        backgroundWork: [:],
         claudeProcessesAlive: true
     ).decision(config: .default, clock: clock)
     #expect(decision == BlockDecision(
@@ -178,6 +182,7 @@ import Testing
     let decision = OracleState(
         sessions: collection.probes,
         humanWaitHints: [:],
+        backgroundWork: [:],
         claudeProcessesAlive: true
     ).decision(config: .default, clock: clock)
     #expect(decision == BlockDecision(
@@ -206,6 +211,7 @@ import Testing
     let decision = OracleState(
         sessions: collection.probes,
         humanWaitHints: [:],
+        backgroundWork: [:],
         claudeProcessesAlive: true
     ).decision(config: .default, clock: clock)
     #expect(decision == BlockDecision(shouldBlock: false, activeSessions: [], discounts: []))
