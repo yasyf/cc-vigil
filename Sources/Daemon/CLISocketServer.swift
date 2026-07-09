@@ -136,7 +136,11 @@ final class CLISocketServer: @unchecked Sendable {
             box.withLock { $0 = response }
             done.signal()
         }
-        guard done.wait(timeout: .now() + Self.handlerTimeoutSeconds) == .success,
+        // The confirmed-clear loop can outrun the default handler cap; give only
+        // that op the wider clear budget so a slow pmset is not cut short, rather
+        // than loosening the cap that keeps every other op honest.
+        let budget = request == .clear ? ClearBudget.socketHandlerSeconds : Self.handlerTimeoutSeconds
+        guard done.wait(timeout: .now() + budget) == .success,
               let response = box.withLock({ $0 })
         else {
             return .error(message: "daemon did not respond in time")

@@ -1,4 +1,5 @@
 import CCVigilAppKit
+import CCVigilCLIKit
 import CCVigilShared
 import Foundation
 
@@ -10,10 +11,29 @@ enum Uninstaller {
                 return hooks.status == 0 ? hooks.output : "uninstall-hooks failed: \(hooks.output)"
             },
             clearSleepBlock: {
-                if case .ok = try? await commands.roundTrip(.clear) {
-                    return true
-                }
-                return false
+                await ConfirmedClear(
+                    attemptClear: {
+                        do {
+                            if case .ok = try await commands.roundTrip(.clear) {
+                                return .confirmed
+                            }
+                            return .wedged
+                        } catch let error as SocketClientError {
+                            if case .replyTimedOut = error {
+                                return .timedOut
+                            }
+                            return .unreachable
+                        } catch {
+                            return .unreachable
+                        }
+                    },
+                    pollBlockCleared: {
+                        guard case let .status(report) = try? await commands.roundTrip(.status) else {
+                            return false
+                        }
+                        return !report.blockApplied
+                    }
+                ).run()
             },
             unregisterServices: {
                 await Task.detached(priority: .userInitiated) {

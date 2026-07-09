@@ -3,7 +3,7 @@ import Foundation
 import os
 
 actor HelperClient: BlockPushing {
-    static let callTimeoutSeconds = 15.0
+    static let callTimeoutSeconds = ClearBudget.helperCallSeconds
 
     private var connection: NSXPCConnection?
     private var generation: UInt64 = 0

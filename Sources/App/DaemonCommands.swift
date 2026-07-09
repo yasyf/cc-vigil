@@ -8,7 +8,7 @@ struct DaemonCommands {
     let socketPath: String
 
     func roundTrip(_ request: WireRequest) async throws -> WireResponse {
-        let client = SocketClient(path: socketPath)
+        let client = SocketClient(path: socketPath, timeoutSeconds: SocketClient.timeout(for: request))
         return try await withCheckedThrowingContinuation { continuation in
             DispatchQueue.global(qos: .userInitiated).async {
                 continuation.resume(with: Result { try client.roundTrip(request) })

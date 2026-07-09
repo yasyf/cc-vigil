@@ -6,7 +6,6 @@ import os
 actor DaemonCore {
     static let reconcileSeconds: TimeInterval = 60
     static let batterySafetyPollSeconds: TimeInterval = 60
-    static let clearAttempts = 4
 
     private let config: VigilConfig
     private let clock: SystemClock
@@ -138,14 +137,14 @@ actor DaemonCore {
             await signal.nudge()
             return settled
                 ? .ok
-                : .error(message: "sleep block did not settle after \(Self.clearAttempts) attempts")
+                : .error(message: "sleep block did not settle after \(ClearBudget.attempts) attempts")
         case .ping:
             return .ok
         }
     }
 
     private func clearConfirmed() async -> Bool {
-        for attempt in 1 ... Self.clearAttempts {
+        for attempt in 1 ... ClearBudget.attempts {
             let generation = reassertGeneration
             let outcome = await pusher.push(blocked: false)
             recordPush(outcome, desired: false, generation: generation)
@@ -158,7 +157,7 @@ actor DaemonCore {
                 \(String(describing: outcome), privacy: .public)
                 """
             )
-            if attempt < Self.clearAttempts {
+            if attempt < ClearBudget.attempts {
                 try? await Task.sleep(for: .milliseconds(100))
             }
         }

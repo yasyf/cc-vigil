@@ -43,6 +43,16 @@ public struct SocketClient: Sendable {
         self.timeoutSeconds = timeoutSeconds
     }
 
+    /// The clear round-trip must outlast the daemon's worst-case confirm loop, so
+    /// a slow-but-progressing pmset clear is never abandoned before it settles;
+    /// every other op keeps the short default budget.
+    public static func timeout(for request: WireRequest) -> Int {
+        switch request {
+        case .clear: ClearBudget.clientSeconds
+        default: defaultTimeoutSeconds
+        }
+    }
+
     public func roundTrip(_ request: WireRequest) throws -> WireResponse {
         try withConnection { descriptor in
             try writeFrame(request, to: descriptor)

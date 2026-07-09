@@ -42,6 +42,7 @@ struct ShortTempDir {
 
 enum FakeReply {
     case respond(WireResponse)
+    case delayedRespond(WireResponse, afterSeconds: TimeInterval)
     case raw(Data)
     case silence
 }
@@ -128,6 +129,12 @@ final class FakeSocketServer: @unchecked Sendable {
         }
         switch reply {
         case let .respond(response):
+            if let frame = try? WireCodec.encodeFrame(response) {
+                sendAll(frame, to: descriptor)
+            }
+            close(descriptor)
+        case let .delayedRespond(response, afterSeconds):
+            Thread.sleep(forTimeInterval: afterSeconds)
             if let frame = try? WireCodec.encodeFrame(response) {
                 sendAll(frame, to: descriptor)
             }
