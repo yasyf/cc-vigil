@@ -95,6 +95,20 @@ private let at = Date(timeIntervalSince1970: 1_767_323_047)
     #expect(try Data(contentsOf: quarantine) == corruptBytes)
 }
 
+@Test func stateStoreRecoversWhenQuarantineMoveFails() throws {
+    let directory = try temporaryDirectory()
+    defer { try? FileManager.default.removeItem(at: directory) }
+    let url = directory.appendingPathComponent("state.json")
+    try Data("corrupt state {".utf8).write(to: url)
+    // A read-only directory fails the quarantine's rename; load must recover regardless.
+    try FileManager.default.setAttributes([.posixPermissions: 0o500], ofItemAtPath: directory.path)
+    defer { try? FileManager.default.setAttributes([.posixPermissions: 0o700], ofItemAtPath: directory.path) }
+
+    #expect(try StateStore.load(url: url) == PersistedState(holds: [], pausedUntil: nil))
+    #expect(FileManager.default.fileExists(atPath: url.path))
+    #expect(!FileManager.default.fileExists(atPath: url.appendingPathExtension("corrupt").path))
+}
+
 @Test func configLoaderDefaultsWhenAbsent() throws {
     let directory = try temporaryDirectory()
     defer { try? FileManager.default.removeItem(at: directory) }
@@ -129,6 +143,19 @@ func configLoaderQuarantinesInvalidConfig(contents: String) throws {
 
     let quarantine = url.appendingPathExtension("corrupt")
     #expect(try Data(contentsOf: quarantine) == corruptBytes)
+}
+
+@Test func configLoaderRecoversWhenQuarantineMoveFails() throws {
+    let directory = try temporaryDirectory()
+    defer { try? FileManager.default.removeItem(at: directory) }
+    let url = directory.appendingPathComponent("config.json")
+    try Data("corrupt config {".utf8).write(to: url)
+    try FileManager.default.setAttributes([.posixPermissions: 0o500], ofItemAtPath: directory.path)
+    defer { try? FileManager.default.setAttributes([.posixPermissions: 0o700], ofItemAtPath: directory.path) }
+
+    #expect(try ConfigLoader.load(url: url) == .default)
+    #expect(FileManager.default.fileExists(atPath: url.path))
+    #expect(!FileManager.default.fileExists(atPath: url.appendingPathExtension("corrupt").path))
 }
 
 @Test func configLoaderSaveRoundTripsNonDefaults() throws {
