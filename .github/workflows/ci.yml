@@ -35,7 +35,13 @@ jobs:
           command -v swiftlint >/dev/null || brew install swiftlint
           command -v xcodegen >/dev/null || brew install xcodegen
       - name: Format (lint mode)
-        run: swiftformat --lint .
+        # Invoke brew's swiftformat explicitly — the image may ship a non-brew
+        # copy earlier on PATH — and echo the version so any future skew is a
+        # one-line diagnosis instead of a multi-round hunt.
+        run: |
+          swiftformat="$(brew --prefix)/bin/swiftformat"
+          "$swiftformat" --version
+          "$swiftformat" --lint .
       - name: Lint
         run: swiftlint --quiet
       - name: Generate the Xcode project
