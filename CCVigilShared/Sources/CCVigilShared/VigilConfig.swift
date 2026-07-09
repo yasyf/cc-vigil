@@ -7,6 +7,8 @@ public enum VigilConfigError: Error, Equatable {
 public struct VigilConfig: Codable, Equatable, Sendable {
     public static let batteryFloorPercentRange = 5 ... 50
     public static let thermalCutoutCelsiusRange = 70.0 ... 95.0
+    public static let pollBlockingSecondsRange = 1 ... 300
+    public static let pollIdleSecondsRange = 1 ... 600
     public static let `default` = VigilConfig()
 
     public let batteryFloorPercent: Int
@@ -51,11 +53,15 @@ public struct VigilConfig: Codable, Equatable, Sendable {
         guard Self.thermalCutoutCelsiusRange.contains(thermalCutoutCelsius) else {
             throw VigilConfigError.outOfRange(field: "thermalCutoutCelsius", allowed: "70-95")
         }
+        guard Self.pollBlockingSecondsRange.contains(pollBlockingSeconds) else {
+            throw VigilConfigError.outOfRange(field: "pollBlockingSeconds", allowed: "1-300")
+        }
+        guard Self.pollIdleSecondsRange.contains(pollIdleSeconds) else {
+            throw VigilConfigError.outOfRange(field: "pollIdleSeconds", allowed: "1-600")
+        }
         let positiveFields = [
             ("activityWindowSeconds", activityWindowSeconds),
             ("pendingAsyncMaxAgeSeconds", pendingAsyncMaxAgeSeconds),
-            ("pollBlockingSeconds", pollBlockingSeconds),
-            ("pollIdleSeconds", pollIdleSeconds),
         ]
         for (field, value) in positiveFields where value < 1 {
             throw VigilConfigError.outOfRange(field: field, allowed: ">= 1")
