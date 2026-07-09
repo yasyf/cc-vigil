@@ -38,6 +38,28 @@ private let cliPath = "/Applications/CCVigil.app/Contents/Helpers/cc-vigil"
     #expect(try HookSettingsFile.state(settingsPath: settings, cliPath: cliPath) == .installed)
 }
 
+@Test func installWritesThroughASymlinkKeepingItIntact() throws {
+    let dir = try ShortTempDir(prefix: "hooks")
+    defer { dir.tearDown() }
+    let targetDir = dir.url.appendingPathComponent("target", isDirectory: true)
+    try FileManager.default.createDirectory(at: targetDir, withIntermediateDirectories: true)
+    let target = targetDir.appendingPathComponent("settings.json")
+    let seed = #"{"model":"opus","hooks":{"Stop":[{"hooks":[{"type":"command","command":"echo hi"}]}]}}"#
+    try Data(seed.utf8).write(to: target)
+    let link = dir.path("settings.json")
+    try FileManager.default.createSymbolicLink(atPath: link, withDestinationPath: target.path)
+
+    try HookSettingsFile.install(settingsPath: link, cliPath: cliPath)
+
+    let attributes = try FileManager.default.attributesOfItem(atPath: link)
+    #expect(attributes[.type] as? FileAttributeType == .typeSymbolicLink)
+    #expect(try FileManager.default.destinationOfSymbolicLink(atPath: link) == target.path)
+    let text = try String(contentsOf: target, encoding: .utf8)
+    #expect(text.contains("'\(cliPath)' nudge"))
+    #expect(text.contains("echo hi"))
+    #expect(try HookSettingsFile.state(settingsPath: link, cliPath: cliPath) == .installed)
+}
+
 @Test func uninstallRemovesOnlyTaggedHandlers() throws {
     let dir = try ShortTempDir(prefix: "hooks")
     defer { dir.tearDown() }

@@ -16,7 +16,7 @@ public enum HookSettingsFile {
     public static func install(settingsPath: String, cliPath: String) throws -> String {
         let url = URL(fileURLWithPath: settingsPath)
         let updated = try HookInstaller.install(into: read(url), cliPath: cliPath)
-        try updated.write(to: url, options: .atomic)
+        try write(updated, to: url)
         return HookInstaller.command(cliPath: cliPath)
     }
 
@@ -26,7 +26,7 @@ public enum HookSettingsFile {
             throw HookSettingsFileError.missingSettings(settingsPath)
         }
         let updated = try HookInstaller.remove(from: existing)
-        try updated.write(to: url, options: .atomic)
+        try write(updated, to: url)
     }
 
     public static func state(settingsPath: String, cliPath: String) throws -> HookInstallState {
@@ -36,5 +36,9 @@ public enum HookSettingsFile {
     private static func read(_ url: URL) throws -> Data? {
         guard FileManager.default.fileExists(atPath: url.path) else { return nil }
         return try Data(contentsOf: url)
+    }
+
+    private static func write(_ data: Data, to url: URL) throws {
+        try data.write(to: url.resolvingSymlinksInPath(), options: .atomic)
     }
 }
