@@ -229,3 +229,50 @@ func releaseBodyCountsWhatHadBeenHolding(
         [],
     ])
 }
+
+@Test func idleThenReconnectWithLatchedCutoutDoesNotFireFromStaleHistory() {
+    let results = notifications(
+        [
+            report(shouldBlock: true, blockApplied: true, activeSessions: [session]),
+            report(),
+            nil,
+            report(latchedCutouts: [.battery]),
+        ],
+        settings: NotificationSettings(notifyOnRelease: false, notifyOnCutout: true)
+    )
+    #expect(results == [[], [], [], []])
+}
+
+@Test func settlingFirstSnapshotOnReconnectFiresCutoutExactlyOnce() {
+    let results = notifications([
+        report(shouldBlock: true, blockApplied: true, activeSessions: [session]),
+        nil,
+        report(shouldBlock: false, blockApplied: true, activeSessions: [session], latchedCutouts: [.battery]),
+        report(shouldBlock: false, blockApplied: false, activeSessions: [session], latchedCutouts: [.battery]),
+    ])
+    #expect(results == [
+        [],
+        [],
+        [SleepNotification(
+            kind: .cutoutLatched,
+            title: "Sleep protection dropped",
+            body: "Battery cutout latched — the Mac may sleep despite active agents."
+        )],
+        [],
+    ])
+}
+
+@Test(arguments: [
+    ([session], [Hold]()),
+    ([ActiveSession](), [hold]),
+])
+func releaseSuppressedIndependentlyByLingeringSessionsOrHolds(
+    sessions: [ActiveSession],
+    holds: [Hold]
+) {
+    let results = notifications([
+        report(shouldBlock: true, blockApplied: true, activeSessions: [session], holds: [hold]),
+        report(shouldBlock: false, blockApplied: false, activeSessions: sessions, holds: holds),
+    ])
+    #expect(results == [[], []])
+}

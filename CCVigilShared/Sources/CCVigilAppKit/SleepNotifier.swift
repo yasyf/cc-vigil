@@ -34,6 +34,7 @@ public struct SleepNotification: Equatable, Sendable {
 public struct SleepNotifier: Equatable, Sendable {
     private var previous: StatusReport?
     private var lastBlocking: StatusReport?
+    private var alertedCutouts: Set<CutoutKind> = []
 
     public init() {}
 
@@ -48,27 +49,24 @@ public struct SleepNotifier: Equatable, Sendable {
             return []
         case let .statusUpdated(report):
             defer {
-                previous = report
                 if report.shouldBlock {
                     lastBlocking = report
+                } else if report.isFullyIdle {
+                    lastBlocking = nil
                 }
+                previous = report
+                alertedCutouts.formIntersection(report.latchedCutouts)
             }
-            guard let previous else {
-                if settings.notifyOnCutout,
-                   lastBlocking != nil,
-                   !report.blockApplied,
-                   !report.latchedCutouts.isEmpty
-                {
-                    return [Self.cutoutLatched(report.latchedCutouts)]
-                }
-                return []
-            }
-            let newlyLatched = report.latchedCutouts.filter { !previous.latchedCutouts.contains($0) }
             var notifications: [SleepNotification] = []
-            if settings.notifyOnCutout, previous.shouldBlock, !newlyLatched.isEmpty {
-                notifications.append(Self.cutoutLatched(newlyLatched))
+            if settings.notifyOnCutout {
+                let firing = report.latchedCutouts.filter { !alertedCutouts.contains($0) }
+                if !firing.isEmpty, cutoutInterruptedWork(report) {
+                    alertedCutouts.formUnion(firing)
+                    notifications.append(Self.cutoutLatched(firing))
+                }
             }
             if settings.notifyOnRelease,
+               let previous,
                previous.blockApplied,
                !report.blockApplied,
                !report.shouldBlock,
@@ -82,6 +80,13 @@ public struct SleepNotifier: Equatable, Sendable {
             }
             return notifications
         }
+    }
+
+    private func cutoutInterruptedWork(_ report: StatusReport) -> Bool {
+        if let previous {
+            return previous.shouldBlock
+        }
+        return report.hasActiveWork || lastBlocking != nil
     }
 
     private static func released(_ blocking: StatusReport, now: Date) -> SleepNotification {
@@ -115,5 +120,16 @@ public struct SleepNotifier: Equatable, Sendable {
             parts.append(holds == 1 ? "1 hold" : "\(holds) holds")
         }
         return parts.joined(separator: " and ")
+    }
+}
+
+private extension StatusReport {
+    var isFullyIdle: Bool {
+        !shouldBlock && !blockApplied
+            && activeSessions.isEmpty && holds.isEmpty && latchedCutouts.isEmpty
+    }
+
+    var hasActiveWork: Bool {
+        !activeSessions.isEmpty || !holds.isEmpty
     }
 }
