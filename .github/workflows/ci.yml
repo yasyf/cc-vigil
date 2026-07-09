@@ -22,10 +22,13 @@ jobs:
     steps:
       - uses: actions/checkout@v7
       - name: Install tools missing from the image
-        # macos-26 ships swiftformat but not swiftlint or xcodegen; guard all
-        # three against image churn.
+        # macos-26 ships swiftformat but not swiftlint or xcodegen; guard those
+        # two against image churn. swiftformat is force-upgraded to brew latest
+        # so CI matches local dev: the image pins an older 0.61.1 whose
+        # spaceAroundParens/wrapIfStatementBodies defaults disagree with 0.62.x
+        # and would fail lint that passes for developers.
         run: |
-          command -v swiftformat >/dev/null || brew install swiftformat
+          brew upgrade swiftformat || brew install swiftformat
           command -v swiftlint >/dev/null || brew install swiftlint
           command -v xcodegen >/dev/null || brew install xcodegen
       - name: Format (lint mode)

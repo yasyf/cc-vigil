@@ -7,7 +7,7 @@ private enum Step: Equatable {
     case send
 }
 
-@Test func printsHoldKeyBeforeSendingThenPropagatesTimeout() {
+@Test func printsHoldKeyBeforeSendingThenPropagatesTimeout() throws {
     var steps: [Step] = []
     var thrown: (any Error)?
     do {
@@ -30,7 +30,7 @@ private enum Step: Equatable {
         .send,
     ])
     #expect(thrown as? SocketClientError == .replyTimedOut(afterSeconds: 5))
-    #expect(String(describing: thrown!).contains("may still have applied"))
+    #expect(try String(describing: #require(thrown)).contains("may still have applied"))
 }
 
 @Test func printsHoldKeyBeforeAConfirmedSend() throws {

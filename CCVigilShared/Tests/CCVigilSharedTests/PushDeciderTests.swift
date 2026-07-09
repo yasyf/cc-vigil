@@ -11,12 +11,12 @@ private let epoch = Date(timeIntervalSince1970: 1_000_000)
     #expect(plan?.reconcile == false)
 }
 
-@Test func edgeFiresOnDesiredTransitionAndSettledPushSuppressesTheRepeat() {
+@Test func edgeFiresOnDesiredTransitionAndSettledPushSuppressesTheRepeat() throws {
     var decider = PushDecider(reconcileSeconds: 60)
 
     let open = decider.plan(desired: true, now: epoch)
     #expect(open?.edge == true)
-    decider.record(desired: true, settled: true, generation: open!.generation, at: epoch)
+    try decider.record(desired: true, settled: true, generation: #require(open?.generation), at: epoch)
 
     #expect(decider.plan(desired: true, now: epoch) == nil)
 
@@ -24,10 +24,10 @@ private let epoch = Date(timeIntervalSince1970: 1_000_000)
     #expect(flip?.edge == true)
 }
 
-@Test func reconcileRepushesExactlyAtTheSixtySecondBoundary() {
+@Test func reconcileRepushesExactlyAtTheSixtySecondBoundary() throws {
     var decider = PushDecider(reconcileSeconds: 60)
     let open = decider.plan(desired: true, now: epoch)
-    decider.record(desired: true, settled: true, generation: open!.generation, at: epoch)
+    try decider.record(desired: true, settled: true, generation: #require(open?.generation), at: epoch)
 
     #expect(decider.plan(desired: true, now: epoch.addingTimeInterval(59)) == nil)
 
@@ -37,24 +37,24 @@ private let epoch = Date(timeIntervalSince1970: 1_000_000)
     #expect(boundary?.reconcile == true)
 }
 
-@Test func idleNeverReconcilesNoMatterHowMuchTimePasses() {
+@Test func idleNeverReconcilesNoMatterHowMuchTimePasses() throws {
     var decider = PushDecider(reconcileSeconds: 60)
     let open = decider.plan(desired: false, now: epoch)
-    decider.record(desired: false, settled: true, generation: open!.generation, at: epoch)
+    try decider.record(desired: false, settled: true, generation: #require(open?.generation), at: epoch)
     #expect(decider.plan(desired: false, now: epoch.addingTimeInterval(3600)) == nil)
 }
 
-@Test func unsettledPushClearsTheLatchSoTheNextTickRetries() {
+@Test func unsettledPushClearsTheLatchSoTheNextTickRetries() throws {
     var decider = PushDecider(reconcileSeconds: 60)
     let open = decider.plan(desired: true, now: epoch)
-    decider.record(desired: true, settled: false, generation: open!.generation, at: epoch)
+    try decider.record(desired: true, settled: false, generation: #require(open?.generation), at: epoch)
     #expect(decider.pushedDesired == nil)
     #expect(decider.plan(desired: true, now: epoch)?.edge == true)
 }
 
-// A push suspends inside `run()` until `resume()` fires, and signals observers the
-// instant it parks — mirroring the actor-suspension window where a mid-flight
-// `forceReassert` can interleave.
+/// A push suspends inside `run()` until `resume()` fires, and signals observers the
+/// instant it parks — mirroring the actor-suspension window where a mid-flight
+/// `forceReassert` can interleave.
 private actor SuspendingPush {
     private var gate: CheckedContinuation<Void, Never>?
     private var suspensionWaiters: [CheckedContinuation<Void, Never>] = []
@@ -66,12 +66,16 @@ private actor SuspendingPush {
             suspended = true
             let waiters = suspensionWaiters
             suspensionWaiters = []
-            for waiter in waiters { waiter.resume() }
+            for waiter in waiters {
+                waiter.resume()
+            }
         }
     }
 
     func awaitSuspension() async {
-        if suspended { return }
+        if suspended {
+            return
+        }
         await withCheckedContinuation { suspensionWaiters.append($0) }
     }
 
@@ -82,13 +86,15 @@ private actor SuspendingPush {
     }
 }
 
-// Reproduces DaemonCore's push loop against a suspending pusher: `plan` captures
-// the generation before the await, `record` folds the outcome after it.
+/// Reproduces DaemonCore's push loop against a suspending pusher: `plan` captures
+/// the generation before the await, `record` folds the outcome after it.
 private actor PushLoop {
     private var decider = PushDecider(reconcileSeconds: 60)
     private let push: SuspendingPush
 
-    init(push: SuspendingPush) { self.push = push }
+    init(push: SuspendingPush) {
+        self.push = push
+    }
 
     func pushIfNeeded(desired: Bool, settled: Bool, now: Date) async {
         guard let plan = decider.plan(desired: desired, now: now) else { return }
@@ -96,7 +102,9 @@ private actor PushLoop {
         decider.record(desired: desired, settled: settled, generation: plan.generation, at: now)
     }
 
-    func forceReassert() { decider.forceReassert() }
+    func forceReassert() {
+        decider.forceReassert()
+    }
 
     func wouldRepush(desired: Bool, now: Date) -> Bool {
         decider.plan(desired: desired, now: now) != nil
