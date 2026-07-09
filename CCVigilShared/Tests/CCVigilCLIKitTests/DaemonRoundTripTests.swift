@@ -307,7 +307,7 @@ struct DaemonRoundTripTests {
 
         let realPath = cliBinary.resolvingSymlinksInPath().path
         let written = try String(contentsOfFile: settings, encoding: .utf8)
-        #expect(written.contains("\(realPath) nudge"))
+        #expect(written.contains(HookInstaller.command(cliPath: realPath)))
         #expect(!written.contains("cc-vigil-link"))
         #expect(installRun.stdout.contains(realPath))
 

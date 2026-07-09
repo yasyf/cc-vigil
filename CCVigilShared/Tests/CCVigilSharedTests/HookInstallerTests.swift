@@ -3,7 +3,7 @@ import Foundation
 import Testing
 
 private let cliPath = "/Applications/CCVigil.app/Contents/Helpers/cc-vigil"
-private let nudge = "\(cliPath) nudge"
+private let nudge = "'\(cliPath)' nudge"
 
 private func parsed(_ data: Data) throws -> NSDictionary {
     try #require(JSONSerialization.jsonObject(with: data) as? NSDictionary)
@@ -17,8 +17,30 @@ private func settings(_ json: String) -> Data {
     Data(json.utf8)
 }
 
+private func shellArgv(_ command: String) throws -> [String] {
+    let process = Process()
+    process.executableURL = URL(fileURLWithPath: "/bin/sh")
+    process.arguments = ["-c", "printf '%s\\n' \(command)"]
+    let out = Pipe()
+    process.standardOutput = out
+    try process.run()
+    process.waitUntilExit()
+    let text = String(decoding: out.fileHandleForReading.readDataToEndOfFile(), as: UTF8.self)
+    return text.split(separator: "\n", omittingEmptySubsequences: false).dropLast().map(String.init)
+}
+
 @Test func installerCommandAppendsNudgeVerb() {
-    #expect(HookInstaller.command(cliPath: "/usr/local/bin/cc-vigil") == "/usr/local/bin/cc-vigil nudge")
+    #expect(HookInstaller.command(cliPath: "/usr/local/bin/cc-vigil") == "'/usr/local/bin/cc-vigil' nudge")
+}
+
+@Test func commandShellQuotesPathContainingSpace() throws {
+    let path = "/Applications/My App/Contents/Helpers/cc-vigil"
+    #expect(try shellArgv(HookInstaller.command(cliPath: path)) == [path, "nudge"])
+}
+
+@Test func commandShellQuotesPathContainingSingleQuote() throws {
+    let path = "/Users/me/it's tools/cc-vigil"
+    #expect(try shellArgv(HookInstaller.command(cliPath: path)) == [path, "nudge"])
 }
 
 @Test func installIntoMissingFileCreatesAllEvents() throws {

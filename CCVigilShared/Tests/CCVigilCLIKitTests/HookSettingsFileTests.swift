@@ -12,10 +12,10 @@ private let cliPath = "/Applications/CCVigil.app/Contents/Helpers/cc-vigil"
 
     let command = try HookSettingsFile.install(settingsPath: settings, cliPath: cliPath)
 
-    #expect(command == "\(cliPath) nudge")
+    #expect(command == "'\(cliPath)' nudge")
     #expect(try HookSettingsFile.state(settingsPath: settings, cliPath: cliPath) == .installed)
     let text = try String(contentsOfFile: settings, encoding: .utf8)
-    #expect(text.contains("\(cliPath) nudge"))
+    #expect(text.contains("'\(cliPath)' nudge"))
     #expect(text.contains("\"_cc_vigil\""))
 }
 

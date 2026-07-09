@@ -17,7 +17,7 @@ public enum HookInstaller {
     public static let tagKey = "_cc_vigil"
 
     public static func command(cliPath: String) -> String {
-        "\(cliPath) nudge"
+        "\(shellQuote(cliPath)) nudge"
     }
 
     public static func install(into settings: Data?, cliPath: String) throws -> Data {
@@ -86,6 +86,10 @@ public enum HookInstaller {
             return NSDictionary(dictionary: tagged[0]).isEqual(to: expected)
         }
         return exact ? .installed : .modifiedExternally
+    }
+
+    private static func shellQuote(_ value: String) -> String {
+        "'" + value.replacingOccurrences(of: "'", with: "'\\''") + "'"
     }
 
     private static func handlerEntry(cliPath: String) -> [String: Any] {
