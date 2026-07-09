@@ -170,38 +170,12 @@ final class AppModel {
         NotificationSettings(notifyOnRelease: config.notifyOnRelease, notifyOnCutout: config.notifyOnCutout)
     }
 
-    private struct ConfigDraft {
-        var batteryFloorPercent: Int
-        var thermalCutoutCelsius: Double
-        var activityWindowSeconds: Int
-        var hideMenuBarExtra: Bool
-        var notifyOnRelease: Bool
-        var notifyOnCutout: Bool
-    }
-
-    private func updateConfig(_ mutate: (inout ConfigDraft) -> Void) {
-        var draft = ConfigDraft(
-            batteryFloorPercent: config.batteryFloorPercent,
-            thermalCutoutCelsius: config.thermalCutoutCelsius,
-            activityWindowSeconds: config.activityWindowSeconds,
-            hideMenuBarExtra: config.hideMenuBarExtra,
-            notifyOnRelease: config.notifyOnRelease,
-            notifyOnCutout: config.notifyOnCutout
-        )
+    private func updateConfig(_ mutate: (inout SettingsDraft) -> Void) {
+        var draft = SettingsDraft(config)
         mutate(&draft)
         let updated: VigilConfig
         do {
-            updated = try VigilConfig(
-                batteryFloorPercent: draft.batteryFloorPercent,
-                thermalCutoutCelsius: draft.thermalCutoutCelsius,
-                activityWindowSeconds: draft.activityWindowSeconds,
-                pendingAsyncMaxAgeSeconds: config.pendingAsyncMaxAgeSeconds,
-                pollBlockingSeconds: config.pollBlockingSeconds,
-                pollIdleSeconds: config.pollIdleSeconds,
-                hideMenuBarExtra: draft.hideMenuBarExtra,
-                notifyOnRelease: draft.notifyOnRelease,
-                notifyOnCutout: draft.notifyOnCutout
-            )
+            updated = try draft.resolved()
         } catch {
             // Every settings control clamps to VigilConfig's ranges.
             fatalError("settings produced an invalid config: \(error)")
