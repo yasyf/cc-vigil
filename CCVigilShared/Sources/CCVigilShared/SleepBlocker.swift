@@ -1,7 +1,7 @@
 import os
 
 public protocol IdleAssertionControlling: AnyObject {
-    func create() -> Bool
+    func create(_ descriptor: IdleAssertionDescriptor) -> Bool
     func release()
 }
 
@@ -20,15 +20,21 @@ public final class SleepBlocker: Sendable {
         var policy: SleepBlockPolicy
         let assertion: any IdleAssertionControlling
         let clamshell: any ClamshellControlling
+        let descriptor: IdleAssertionDescriptor
     }
 
     private let mechanisms: OSAllocatedUnfairLock<Mechanisms>
 
-    public init(assertion: any IdleAssertionControlling, clamshell: any ClamshellControlling) {
+    public init(
+        assertion: any IdleAssertionControlling,
+        clamshell: any ClamshellControlling,
+        descriptor: IdleAssertionDescriptor = .ccVigil
+    ) {
         mechanisms = OSAllocatedUnfairLock(uncheckedState: Mechanisms(
             policy: SleepBlockPolicy(),
             assertion: assertion,
-            clamshell: clamshell
+            clamshell: clamshell,
+            descriptor: descriptor
         ))
     }
 
@@ -50,7 +56,9 @@ public final class SleepBlocker: Sendable {
             for action in guarded.policy.set(blocked) {
                 switch action {
                 case .createAssertion:
-                    guarded.policy.record(.assertionCreated(success: guarded.assertion.create()))
+                    guarded.policy.record(.assertionCreated(
+                        success: guarded.assertion.create(guarded.descriptor)
+                    ))
                 case .releaseAssertion:
                     guarded.assertion.release()
                     guarded.policy.record(.assertionReleased)

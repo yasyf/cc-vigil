@@ -3,16 +3,25 @@ import Testing
 
 private final class FakeIdleAssertion: IdleAssertionControlling {
     var createResult = true
-    private(set) var createCalls = 0
+    private(set) var creates: [IdleAssertionDescriptor] = []
     private(set) var releaseCalls = 0
+    /// Net assertions held: a successful create re-arms the single live assertion
+    /// (stays 1, never accumulates), a release drops it. Models the real helper's
+    /// create-new-then-release-old re-arm so a leak would surface as liveCount > 1.
+    private(set) var liveCount = 0
 
-    func create() -> Bool {
-        createCalls += 1
-        return createResult
+    func create(_ descriptor: IdleAssertionDescriptor) -> Bool {
+        creates.append(descriptor)
+        guard createResult else {
+            return false
+        }
+        liveCount = 1
+        return true
     }
 
     func release() {
         releaseCalls += 1
+        liveCount = 0
     }
 }
 
@@ -58,9 +67,55 @@ private final class SequencedClamshell: ClamshellControlling {
     ))
     #expect(report.state.isSettled == true)
     #expect(blocker.isBlocking == true)
-    #expect(assertion.createCalls == 1)
+    #expect(assertion.creates.count == 1)
     #expect(assertion.releaseCalls == 0)
     #expect(clamshell.calls == [true])
+}
+
+@Test func blockCarriesAttributedAssertionProperties() {
+    let assertion = FakeIdleAssertion()
+    let blocker = SleepBlocker(assertion: assertion, clamshell: FakeClamshell())
+    _ = blocker.setBlocked(true)
+    #expect(assertion.creates == [.ccVigil])
+    let descriptor = assertion.creates[0]
+    #expect(descriptor.type == .preventUserIdleSystemSleep)
+    #expect(descriptor.name == "cc-vigil: agents active")
+    #expect(descriptor.reason == "Claude Code agents are working; cc-vigil is holding the system awake")
+    #expect(descriptor.details == "cc-vigil helper")
+    #expect(descriptor.timeout == 900)
+    #expect(descriptor.timeoutAction == .release)
+}
+
+@Test func blockForwardsConfiguredDescriptor() {
+    let assertion = FakeIdleAssertion()
+    let descriptor = IdleAssertionDescriptor(
+        type: .preventUserIdleSystemSleep,
+        name: "custom",
+        reason: "custom reason",
+        details: "custom details",
+        timeout: 42,
+        timeoutAction: .release
+    )
+    let blocker = SleepBlocker(assertion: assertion, clamshell: FakeClamshell(), descriptor: descriptor)
+    _ = blocker.setBlocked(true)
+    #expect(assertion.creates == [descriptor])
+}
+
+@Test func repeatedBlockReArmsAssertionWithoutLeaking() {
+    let assertion = FakeIdleAssertion()
+    let clamshell = FakeClamshell()
+    let blocker = SleepBlocker(assertion: assertion, clamshell: clamshell)
+    _ = blocker.setBlocked(true)
+    _ = blocker.setBlocked(true)
+    #expect(assertion.creates == [.ccVigil, .ccVigil])
+    #expect(assertion.liveCount == 1)
+    #expect(assertion.releaseCalls == 0)
+    #expect(clamshell.calls == [true, true])
+    #expect(blocker.isBlocking == true)
+    _ = blocker.setBlocked(false)
+    #expect(assertion.liveCount == 0)
+    #expect(assertion.releaseCalls == 1)
+    #expect(blocker.isBlocking == false)
 }
 
 @Test func blockerReleasesAndClearsOnUnblock() {
@@ -84,17 +139,6 @@ private final class SequencedClamshell: ClamshellControlling {
     #expect(report.state == SleepBlockState(desired: false, assertionHeld: false, pmsetDisableSleep: false))
     #expect(assertion.releaseCalls == 1)
     #expect(clamshell.calls == [false])
-}
-
-@Test func blockerRerunsFullPairOnRepeatedBlock() {
-    let assertion = FakeIdleAssertion()
-    let clamshell = FakeClamshell()
-    let blocker = SleepBlocker(assertion: assertion, clamshell: clamshell)
-    _ = blocker.setBlocked(true)
-    _ = blocker.setBlocked(true)
-    #expect(assertion.createCalls == 2)
-    #expect(clamshell.calls == [true, true])
-    #expect(blocker.isBlocking == true)
 }
 
 @Test(arguments: [

@@ -4,7 +4,7 @@ import os
 import Testing
 
 private final class NoopAssertion: IdleAssertionControlling {
-    func create() -> Bool {
+    func create(_: IdleAssertionDescriptor) -> Bool {
         true
     }
 
