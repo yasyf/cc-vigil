@@ -7,6 +7,34 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ## [Unreleased]
 
 ### Added
+- The app posts a macOS notification when the block releases because agents
+  finished — what was holding the Mac awake and when it wrapped up — and when
+  a battery or thermal cutout latches mid-block, the one moment sleep
+  protection drops while agents are still working. Both are on by default;
+  the Settings window's Notifications section toggles them (`notifyOnRelease`
+  and `notifyOnCutout` in `config.json`). The first edge worth posting asks
+  macOS for notification permission.
+- The daemon re-asserts the sleep block when the Mac switches between AC and
+  battery power. Plugging or unplugging an Apple Silicon MacBook with the lid
+  closed can instant-sleep it and drop the assertion out from under a run;
+  re-asserting on the transition keeps clamshell runs alive across a charger
+  swap.
+- The sleep hold now names its owner: the idle assertion carries cc-vigil's
+  name and a human-readable reason, so `pmset -g assertions` and Activity
+  Monitor's Energy tab attribute the hold to cc-vigil instead of an anonymous
+  assertion ID. It also arms a 15-minute timeout that releases the hold on
+  its own — the daemon's 60-second re-push re-arms it continuously, so a
+  healthy system never hits it and a wedged or orphaned helper loses the
+  hold instead of pinning the Mac awake.
+- Sessions in a relocated Claude config root (`CLAUDE_CONFIG_DIR`) now hold
+  the Mac awake instead of being invisible to the oracle. The nudge hook runs
+  inside the session, so it forwards the relocated transcripts root that the
+  launchd daemon's own environment lacks; the daemon admits a root
+  it is not already scanning (deduped by real path, so a symlinked `projects`
+  directory does not double-count), scans it alongside `~/.claude/projects`,
+  and persists it in `state.json` so it survives a restart. Extra roots can
+  also be pinned statically with the new `transcriptsRoots` key in
+  `config.json`.
 - Every block edge in `events.log` now carries the active holds, so a
   hold-driven block — `cc-vigil hold` with no active sessions — explains
   itself in the log instead of needing a separate hold event to correlate.

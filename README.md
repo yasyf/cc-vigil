@@ -51,7 +51,7 @@ The first run walks you through everything macOS requires:
 2. **Claude Code hooks** — the installer adds tagged `cc-vigil nudge` hooks to `~/.claude/settings.json`. Your existing hooks are preserved untouched, and `cc-vigil uninstall-hooks` removes only the tagged entries.
 3. **CLI on your PATH** — the bundled `cc-vigil` binary is symlinked into `/usr/local/bin` (or `~/.local/bin` when that isn't writable).
 
-After that the eye in your menu bar fills whenever the Mac is held awake, and the menu names the sessions holding it.
+After that the eye in your menu bar fills whenever the Mac is held awake, and the menu names the sessions holding it. You don't have to watch it: cc-vigil posts a notification when the last agent finishes and the Mac may sleep, and another when a battery or thermal cutout drops protection mid-run — the one moment sleep can catch working agents. Both are on by default; the Settings window turns them off.
 
 ## How it works
 
@@ -60,6 +60,8 @@ After that the eye in your menu bar fills whenever the Mac is held awake, and th
 The obvious design counts hooks: acquire a sleep hold on `UserPromptSubmit`, release it on `Stop`. [adrafinil](https://github.com/kageroumado/adrafinil) works that way, and its [issue #7](https://github.com/kageroumado/adrafinil/issues/7) showed where that leads: an agent kicks off a background workflow, posts its "running in background" reply, `Stop` fires, the refcount hits zero — and the Mac sleeps while sub-agents are still streaming tokens. adrafinil patched that case in v1.4.0 with `SubagentStop` refcounting and process sniffing, but the patch rides the same refcount substrate that produced its [issue #2](https://github.com/kageroumado/adrafinil/issues/2) leak: every new way work can start or stop needs another matched acquire/release pair, and any miss either sleeps a working Mac or holds an idle one awake. Hook events describe the conversation loop, not the work.
 
 cc-vigil inverts the relationship. Hooks carry no idle semantics at all; every hook is a nudge meaning "re-read the transcripts now". The truth lives in the transcripts under `~/.claude/projects`, parsed by [cc-transcript](https://github.com/yasyf/cc-transcript): pending tool calls, background tasks, sub-agent trees, and waiting workflows are all visible there, whether or not any hook ever fires. There is no counter to corrupt — idle is a fresh judgment from evidence on every poll, and background work a `Stop` payload reports still running holds the block across new prompts and auto-compaction until a top-level `Stop` reports none.
+
+Relocated setups count too. A session running with `CLAUDE_CONFIG_DIR` set writes its transcripts somewhere the daemon can't guess, but the nudge hook runs inside that session and forwards the relocated root; the daemon starts scanning it alongside `~/.claude/projects` and remembers it across restarts. Extra roots can also be pinned with `transcriptsRoots` in the config.
 
 ### The oracle
 
@@ -72,12 +74,14 @@ The oracle re-evaluates every 15 seconds while blocking, every 45 seconds while 
 
 ### Sleep mechanics
 
-While the oracle says "working", cc-vigil holds a `PreventUserIdleSystemSleep` assertion and, because clamshell sleep ignores assertions, sets `pmset -a disablesleep 1` through a minimal root helper whose entire interface is set, get, and version. No policy runs as root.
+While the oracle says "working", cc-vigil holds a `PreventUserIdleSystemSleep` assertion and, because clamshell sleep ignores assertions, sets `pmset -a disablesleep 1` through a minimal root helper whose entire interface is set, get, and version. No policy runs as root. The assertion carries cc-vigil's name and reason — `pmset -g assertions` and Activity Monitor's Energy tab show exactly who is holding the Mac awake — and a 15-minute timeout the daemon's re-push keeps re-arming, so a wedged helper loses the hold on its own instead of pinning the machine.
 
 Two invariants:
 
 - **The display always sleeps normally.** cc-vigil never takes `PreventUserIdleDisplaySleep` and never runs `caffeinate`. The screen goes dark on schedule while the system stays up.
 - **`disablesleep` never outlives the daemon.** It's a persistent machine-wide setting, so the helper force-clears it on boot, on shutdown signals, on a 60-second dead-man after the daemon disappears while blocked, and re-reconciles after every wake.
+
+Clamshell runs also survive a charger swap: plugging or unplugging with the lid closed can instant-sleep an Apple Silicon Mac and drop the assertion, so the daemon re-asserts the block whenever the power source flips between AC and battery.
 
 Cutouts protect the hardware: on battery below the floor, or lid-closed at high temperature, the block releases and latches off until conditions recover (with hysteresis, so it doesn't flap). Manual `cc-vigil hold` and `pause` override the oracle in either direction.
 
@@ -94,6 +98,9 @@ Config lives at `~/Library/Application Support/cc-vigil/config.json`. Missing ke
 | `pollBlockingSeconds`      | `15`    | ≥1    | Oracle cadence while blocking.                                                                                         |
 | `pollIdleSeconds`          | `45`    | ≥1    | Oracle cadence while idle.                                                                                             |
 | `hideMenuBarExtra`         | `false` | —     | Hide the menu-bar icon; relaunch CCVigil.app to bring it back.                                                         |
+| `notifyOnRelease`          | `true`  | —     | Post a notification when the block releases because the agents finished.                                               |
+| `notifyOnCutout`           | `true`  | —     | Post a notification when a battery or thermal cutout latches and drops protection mid-block.                           |
+| `transcriptsRoots`         | `[]`    | —     | Extra transcript roots to scan besides `~/.claude/projects`. Roots nudged from `CLAUDE_CONFIG_DIR` sessions register themselves. |
 
 ## CLI reference
 
