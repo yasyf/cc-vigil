@@ -26,8 +26,11 @@ jobs:
         # two against image churn. swiftformat is force-upgraded to brew latest
         # so CI matches local dev: the image pins an older 0.61.1 whose
         # spaceAroundParens/wrapIfStatementBodies defaults disagree with 0.62.x
-        # and would fail lint that passes for developers.
+        # and would fail lint that passes for developers. `brew update` first —
+        # the image's Homebrew formula index is stale, so `brew upgrade` alone
+        # sees 0.61.1 as current and no-ops.
         run: |
+          brew update
           brew upgrade swiftformat || brew install swiftformat
           command -v swiftlint >/dev/null || brew install swiftlint
           command -v xcodegen >/dev/null || brew install xcodegen
