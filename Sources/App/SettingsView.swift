@@ -15,6 +15,10 @@ struct SettingsView: View {
             Section("Oracle") {
                 activityStepper
             }
+            Section("Notifications") {
+                Toggle("Notify when agents finish", isOn: notifyOnRelease)
+                Toggle("Notify when a cutout drops protection", isOn: notifyOnCutout)
+            }
             Section("App") {
                 Toggle("Hide menu bar icon", isOn: hideMenuBar)
                 Toggle("Launch at login", isOn: launchAtLogin)
@@ -94,6 +98,20 @@ struct SettingsView: View {
         Binding(
             get: { model.config.hideMenuBarExtra },
             set: { model.setHideMenuBarExtra($0) }
+        )
+    }
+
+    private var notifyOnRelease: Binding<Bool> {
+        Binding(
+            get: { model.config.notifyOnRelease },
+            set: { model.setNotifyOnRelease($0) }
+        )
+    }
+
+    private var notifyOnCutout: Binding<Bool> {
+        Binding(
+            get: { model.config.notifyOnCutout },
+            set: { model.setNotifyOnCutout($0) }
         )
     }
 

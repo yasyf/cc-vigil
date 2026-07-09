@@ -16,6 +16,8 @@ public struct VigilConfig: Codable, Equatable, Sendable {
     public let pollBlockingSeconds: Int
     public let pollIdleSeconds: Int
     public let hideMenuBarExtra: Bool
+    public let notifyOnRelease: Bool
+    public let notifyOnCutout: Bool
 
     private init() {
         batteryFloorPercent = 20
@@ -25,6 +27,8 @@ public struct VigilConfig: Codable, Equatable, Sendable {
         pollBlockingSeconds = 15
         pollIdleSeconds = 45
         hideMenuBarExtra = false
+        notifyOnRelease = true
+        notifyOnCutout = true
     }
 
     public init(
@@ -34,7 +38,9 @@ public struct VigilConfig: Codable, Equatable, Sendable {
         pendingAsyncMaxAgeSeconds: Int = Self.default.pendingAsyncMaxAgeSeconds,
         pollBlockingSeconds: Int = Self.default.pollBlockingSeconds,
         pollIdleSeconds: Int = Self.default.pollIdleSeconds,
-        hideMenuBarExtra: Bool = Self.default.hideMenuBarExtra
+        hideMenuBarExtra: Bool = Self.default.hideMenuBarExtra,
+        notifyOnRelease: Bool = Self.default.notifyOnRelease,
+        notifyOnCutout: Bool = Self.default.notifyOnCutout
     ) throws {
         guard Self.batteryFloorPercentRange.contains(batteryFloorPercent) else {
             throw VigilConfigError.outOfRange(field: "batteryFloorPercent", allowed: "5-50")
@@ -58,6 +64,8 @@ public struct VigilConfig: Codable, Equatable, Sendable {
         self.pollBlockingSeconds = pollBlockingSeconds
         self.pollIdleSeconds = pollIdleSeconds
         self.hideMenuBarExtra = hideMenuBarExtra
+        self.notifyOnRelease = notifyOnRelease
+        self.notifyOnCutout = notifyOnCutout
     }
 
     public init(from decoder: Decoder) throws {
@@ -77,7 +85,11 @@ public struct VigilConfig: Codable, Equatable, Sendable {
             pollIdleSeconds: container
                 .decodeIfPresent(Int.self, forKey: .pollIdleSeconds) ?? Self.default.pollIdleSeconds,
             hideMenuBarExtra: container
-                .decodeIfPresent(Bool.self, forKey: .hideMenuBarExtra) ?? Self.default.hideMenuBarExtra
+                .decodeIfPresent(Bool.self, forKey: .hideMenuBarExtra) ?? Self.default.hideMenuBarExtra,
+            notifyOnRelease: container
+                .decodeIfPresent(Bool.self, forKey: .notifyOnRelease) ?? Self.default.notifyOnRelease,
+            notifyOnCutout: container
+                .decodeIfPresent(Bool.self, forKey: .notifyOnCutout) ?? Self.default.notifyOnCutout
         )
     }
 }

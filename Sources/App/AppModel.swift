@@ -26,6 +26,7 @@ final class AppModel {
 
     @ObservationIgnored private let paths: SupportPaths
     @ObservationIgnored private let commands: DaemonCommands
+    @ObservationIgnored private let notifications = SleepNotificationController()
     @ObservationIgnored private let registrar = ServiceRegistrar()
     @ObservationIgnored private let launchedAt = Date()
     @ObservationIgnored private var daemonClient: DaemonClient?
@@ -48,7 +49,9 @@ final class AppModel {
     func start() {
         guard daemonClient == nil else { return }
         let client = DaemonClient { [weak self] event in
-            self?.status.apply(event)
+            guard let self else { return }
+            status.apply(event)
+            notifications.handle(event, settings: notificationSettings)
         }
         daemonClient = client
         client.start()
@@ -155,11 +158,25 @@ final class AppModel {
         updateConfig { $0.hideMenuBarExtra = hidden }
     }
 
+    func setNotifyOnRelease(_ enabled: Bool) {
+        updateConfig { $0.notifyOnRelease = enabled }
+    }
+
+    func setNotifyOnCutout(_ enabled: Bool) {
+        updateConfig { $0.notifyOnCutout = enabled }
+    }
+
+    private var notificationSettings: NotificationSettings {
+        NotificationSettings(notifyOnRelease: config.notifyOnRelease, notifyOnCutout: config.notifyOnCutout)
+    }
+
     private struct ConfigDraft {
         var batteryFloorPercent: Int
         var thermalCutoutCelsius: Double
         var activityWindowSeconds: Int
         var hideMenuBarExtra: Bool
+        var notifyOnRelease: Bool
+        var notifyOnCutout: Bool
     }
 
     private func updateConfig(_ mutate: (inout ConfigDraft) -> Void) {
@@ -167,7 +184,9 @@ final class AppModel {
             batteryFloorPercent: config.batteryFloorPercent,
             thermalCutoutCelsius: config.thermalCutoutCelsius,
             activityWindowSeconds: config.activityWindowSeconds,
-            hideMenuBarExtra: config.hideMenuBarExtra
+            hideMenuBarExtra: config.hideMenuBarExtra,
+            notifyOnRelease: config.notifyOnRelease,
+            notifyOnCutout: config.notifyOnCutout
         )
         mutate(&draft)
         let updated: VigilConfig
@@ -179,7 +198,9 @@ final class AppModel {
                 pendingAsyncMaxAgeSeconds: config.pendingAsyncMaxAgeSeconds,
                 pollBlockingSeconds: config.pollBlockingSeconds,
                 pollIdleSeconds: config.pollIdleSeconds,
-                hideMenuBarExtra: draft.hideMenuBarExtra
+                hideMenuBarExtra: draft.hideMenuBarExtra,
+                notifyOnRelease: draft.notifyOnRelease,
+                notifyOnCutout: draft.notifyOnCutout
             )
         } catch {
             // Every settings control clamps to VigilConfig's ranges.

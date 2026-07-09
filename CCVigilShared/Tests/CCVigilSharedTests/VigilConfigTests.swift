@@ -11,6 +11,8 @@ import Testing
     #expect(config.pollBlockingSeconds == 15)
     #expect(config.pollIdleSeconds == 45)
     #expect(config.hideMenuBarExtra == false)
+    #expect(config.notifyOnRelease == true)
+    #expect(config.notifyOnCutout == true)
 }
 
 @Test(arguments: [(5, 70.0), (50, 95.0)])
@@ -52,6 +54,8 @@ func configRejectsOutOfRange(field: String, value: String, allowed: String) {
     #expect(config.pendingAsyncMaxAgeSeconds == 43200)
     #expect(config.pollBlockingSeconds == 15)
     #expect(config.hideMenuBarExtra == false)
+    #expect(config.notifyOnRelease == true)
+    #expect(config.notifyOnCutout == true)
 }
 
 @Test func configRoundTripsThroughJSON() throws {
@@ -62,7 +66,9 @@ func configRejectsOutOfRange(field: String, value: String, allowed: String) {
         pendingAsyncMaxAgeSeconds: 3600,
         pollBlockingSeconds: 10,
         pollIdleSeconds: 60,
-        hideMenuBarExtra: true
+        hideMenuBarExtra: true,
+        notifyOnRelease: false,
+        notifyOnCutout: false
     )
     let decoded = try JSONDecoder().decode(VigilConfig.self, from: JSONEncoder().encode(original))
     #expect(decoded == original)
