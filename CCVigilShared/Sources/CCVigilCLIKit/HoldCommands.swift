@@ -21,14 +21,27 @@ public struct HoldCommand: ParsableCommand {
 
     public init() {}
 
+    public static func perform(
+        key: String,
+        reason: String,
+        ttlSeconds: Int,
+        send: (WireRequest) throws -> WireResponse,
+        emit: (String) -> Void
+    ) throws {
+        emit("holding \(key) for \(Durations.text(forSeconds: ttlSeconds)); release with: cc-vigil release \(key)")
+        try requireOK(send(.hold(key: key, reason: reason, ttlSeconds: ttlSeconds, pid: nil)))
+    }
+
     public func run() throws {
         let ttlSeconds = try min(Durations.seconds(from: duration), Hold.maxTTLSeconds)
         let holdKey = key ?? "cli-\(UUID().uuidString.prefix(8).lowercased())"
-        try requireOK(socketOptions.client.roundTrip(
-            .hold(key: holdKey, reason: reason, ttlSeconds: ttlSeconds, pid: nil)
-        ))
-        let ttlText = Durations.text(forSeconds: ttlSeconds)
-        print("holding \(holdKey) for \(ttlText); release with: cc-vigil release \(holdKey)")
+        try Self.perform(
+            key: holdKey,
+            reason: reason,
+            ttlSeconds: ttlSeconds,
+            send: socketOptions.client.roundTrip,
+            emit: { print($0) }
+        )
     }
 }
 
