@@ -4,7 +4,7 @@ import Foundation
 import os
 import Testing
 
-private func waitUntil(_ seconds: TimeInterval, _ predicate: () -> Bool) -> Bool {
+private func waitUntil(_ seconds: TimeInterval = 30, _ predicate: () -> Bool) -> Bool {
     let deadline = Date().addingTimeInterval(seconds)
     while Date() < deadline {
         if predicate() {
@@ -41,14 +41,19 @@ private func waitUntil(_ seconds: TimeInterval, _ predicate: () -> Bool) -> Bool
     }
     admitter.start()
 
-    // The first `limit` work items park inside admit(); the extra client blocks
-    // the admitter until a slot frees, so concurrency tops out at the limit.
-    #expect(waitUntil(2) { state.withLock { $0.current } == limit })
-    #expect(state.withLock { $0.peak } == limit)
-
+    // Best-effort (NOT an assertion — result discarded): give the first `limit`
+    // work items up to 2s to park inside admit() so the peak builds toward the
+    // limit and would expose an over-admitting throttle. A starved GCD pool may
+    // not schedule them in time; that's fine, the guarantee below still holds.
+    _ = waitUntil(2) { state.withLock { $0.current } == limit }
     for _ in 0 ..< clients {
         release.signal()
     }
-    #expect(waitUntil(2) { state.withLock { $0.done } == clients })
-    #expect(state.withLock { $0.peak } == limit)
+    // The throttle's contract is: every client served, and never more than
+    // `limit` running at once. Assert exactly that — not that the peak *reaches*
+    // the limit, which needs the GCD pool to run `limit` closures simultaneously
+    // (a starved runner won't, and left peak at 0 within the old 2s window). The
+    // 30s ceiling is generous; a healthy run returns early.
+    #expect(waitUntil { state.withLock { $0.done } == clients })
+    #expect(state.withLock { $0.peak } <= limit)
 }

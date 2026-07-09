@@ -87,7 +87,10 @@ private let sampleReport = StatusReport(
     let client = SocketClient(path: server.path, timeoutSeconds: 5)
     let payload = NudgePayload(sessionId: "s", hookEvent: "PreToolUse")
     try client.send(.nudge(payload))
-    let deadline = Date().addingTimeInterval(2)
+    // Generous poll ceiling: the server records the request asynchronously, and
+    // a loaded runner can delay that past a couple of seconds. A healthy run
+    // exits the loop immediately; only a genuinely dropped request pays the wait.
+    let deadline = Date().addingTimeInterval(30)
     while server.requests.isEmpty, Date() < deadline {
         Thread.sleep(forTimeInterval: 0.005)
     }

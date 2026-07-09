@@ -8,7 +8,11 @@ import Testing
     let elapsed = await clock.measure {
         await signal.wait(upTo: 10)
     }
-    #expect(elapsed < .seconds(1))
+    // Consuming a pending nudge returns synchronously (no continuation, so not
+    // subject to the scheduler starvation that inflates the timeout path). The
+    // ceiling only guards against it wrongly blocking to the `upTo:` timeout, so
+    // a value well under 10s and above scheduling jitter suffices.
+    #expect(elapsed < .seconds(5))
 }
 
 @Test(.timeLimit(.minutes(1)))
@@ -35,7 +39,11 @@ func waitTimesOutWithoutNudge() async {
         await signal.nudge()
         await waiter
     }
-    #expect(elapsed < .seconds(10))
+    // A generous ceiling below the 30s `upTo:` timeout: the nudge resumes the
+    // waiter almost immediately, but a starved runner can delay the continuation
+    // resume by several seconds. Stay under 30s so a never-resumed regression
+    // (which would hit the timeout) still fails.
+    #expect(elapsed < .seconds(20))
 }
 
 @Test func pendingNudgeIsConsumedByOneWait() async {
