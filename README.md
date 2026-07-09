@@ -74,7 +74,7 @@ The oracle re-evaluates every 15 seconds while blocking, every 45 seconds while 
 
 ### Sleep mechanics
 
-While the oracle says "working", cc-vigil holds a `PreventUserIdleSystemSleep` assertion and, because clamshell sleep ignores assertions, sets `pmset -a disablesleep 1` through a minimal root helper whose entire interface is set, get, and version. No policy runs as root. The assertion carries cc-vigil's name and reason — `pmset -g assertions` and Activity Monitor's Energy tab show exactly who is holding the Mac awake — and a 15-minute timeout the daemon's re-push keeps re-arming. The blocking poll cadence is capped at five minutes, so a healthy daemon re-arms with ten minutes to spare and a wedged helper loses the hold on its own instead of pinning the machine.
+While the oracle says "working", cc-vigil holds a `PreventUserIdleSystemSleep` assertion and, because clamshell sleep ignores assertions, sets `pmset -a disablesleep 1` through a minimal root helper whose entire interface is set, get, and version. No policy runs as root. The assertion carries cc-vigil's name and reason — `pmset -g assertions` and Activity Monitor's Energy tab show exactly who is holding the Mac awake — and a 15-minute timeout the daemon's re-push keeps re-arming. The blocking poll cadence is capped at five minutes, so a healthy daemon re-arms with over nine minutes to spare and a wedged helper loses the hold on its own instead of pinning the machine.
 
 Two invariants:
 

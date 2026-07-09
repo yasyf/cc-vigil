@@ -26,11 +26,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   name and a human-readable reason, so `pmset -g assertions` and Activity
   Monitor's Energy tab attribute the hold to cc-vigil instead of an anonymous
   assertion ID. It also arms a 15-minute timeout that releases the hold on
-  its own — the daemon re-pushes on a 60-second reconcile clock, and config
-  now caps the poll cadences (`pollBlockingSeconds` 1–300, `pollIdleSeconds`
-  1–600), so a healthy system re-arms with at least ten minutes to spare and
-  a wedged or orphaned helper loses the hold instead of pinning the Mac
-  awake.
+  its own — re-pushes ride the blocking evaluate cadence (with a 60-second
+  reconcile floor), and config now caps the poll cadences
+  (`pollBlockingSeconds` 1–300, `pollIdleSeconds` 1–600), so even a
+  five-minute cadence re-arms with over nine minutes to spare and a wedged
+  or orphaned helper loses the hold instead of pinning the Mac awake.
 - Sessions in a relocated Claude config root (`CLAUDE_CONFIG_DIR`) now hold
   the Mac awake instead of being invisible to the oracle. The nudge hook runs
   inside the session, so it forwards the relocated transcripts root that the
