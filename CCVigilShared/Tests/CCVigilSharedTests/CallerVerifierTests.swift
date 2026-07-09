@@ -63,6 +63,36 @@ private final class FakeCodeSignatureChecker: CodeSignatureChecking, @unchecked 
     #expect(checker.identifierLookups == 0)
 }
 
+@Test func verifierAcceptsTeamPinnedAppClientForDaemonListener() {
+    let checker = FakeCodeSignatureChecker(selfTeam: "TEAM123", requirementSatisfied: true)
+    let verifier = CallerVerifier(
+        clientIdentifier: AppXPC.appIdentifier,
+        checker: checker,
+        allowIdentifierOnlyFallback: false
+    )
+    #expect(verifier.shouldAccept(auditToken: auditToken) == true)
+    #expect(checker.requirementsEvaluated == [
+        "identifier \"dev.yasyf.cc-vigil\" and anchor apple generic "
+            + "and certificate leaf[subject.OU] = \"TEAM123\"",
+    ])
+    #expect(checker.identifierLookups == 0)
+}
+
+@Test func verifierRejectsNonAppDaemonPeerFailingClosedInRelease() {
+    let checker = FakeCodeSignatureChecker(
+        selfTeam: nil,
+        callerIdentifier: HelperXPC.daemonIdentifier
+    )
+    let verifier = CallerVerifier(
+        clientIdentifier: AppXPC.appIdentifier,
+        checker: checker,
+        allowIdentifierOnlyFallback: false
+    )
+    #expect(verifier.shouldAccept(auditToken: auditToken) == false)
+    #expect(checker.requirementsEvaluated.isEmpty)
+    #expect(checker.identifierLookups == 0)
+}
+
 @Test func verifierTeamPinnedRejectionNeverFallsBackToNameOnly() {
     let checker = FakeCodeSignatureChecker(
         selfTeam: "TEAM123",

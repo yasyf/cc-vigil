@@ -50,10 +50,16 @@ final class AppXPCServer: NSObject, NSXPCListenerDelegate, @unchecked Sendable {
     private let listener: NSXPCListener
     private let broadcaster: StatusBroadcaster
     private let service: AppXPCService
+    private let verifier: CallerVerifier
 
-    init(broadcaster: StatusBroadcaster, statusProvider: @escaping @Sendable () async -> Data?) {
+    init(
+        broadcaster: StatusBroadcaster,
+        verifier: CallerVerifier,
+        statusProvider: @escaping @Sendable () async -> Data?
+    ) {
         listener = NSXPCListener(machServiceName: AppXPC.machServiceName)
         self.broadcaster = broadcaster
+        self.verifier = verifier
         service = AppXPCService(broadcaster: broadcaster, statusProvider: statusProvider)
         super.init()
         listener.delegate = self
@@ -65,6 +71,12 @@ final class AppXPCServer: NSObject, NSXPCListenerDelegate, @unchecked Sendable {
     }
 
     func listener(_: NSXPCListener, shouldAcceptNewConnection newConnection: NSXPCConnection) -> Bool {
+        guard verifier.shouldAccept(auditToken: newConnection.auditTokenData) else {
+            Logger.daemon.error(
+                "rejected app XPC peer pid \(newConnection.processIdentifier, privacy: .public)"
+            )
+            return false
+        }
         newConnection.exportedInterface = NSXPCInterface(with: AppXPCProtocol.self)
         newConnection.exportedObject = service
         newConnection.remoteObjectInterface = NSXPCInterface(with: AppXPCClientProtocol.self)

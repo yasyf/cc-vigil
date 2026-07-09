@@ -126,6 +126,10 @@ targets:
     platform: macOS
     sources:
       - path: Sources/Daemon
+      # Caller-verification edge adapters shared with the helper: the SecCode
+      # checker and the NSXPCConnection audit-token reader, compiled into each
+      # XPC-listener binary so both verify peers through identical code.
+      - path: Sources/Shared
     info:
       # Embedded into the binary (__TEXT,__info_plist): a bare executable has no
       # bundle, so launchd and SMAppService learn its identity from the section.
@@ -143,6 +147,12 @@ targets:
       base:
         PRODUCT_BUNDLE_IDENTIFIER: dev.yasyf.cc-vigil.daemon
         CREATE_INFOPLIST_SECTION_IN_BINARY: "YES"
+      configs:
+        Debug:
+          # Ad-hoc/dev builds: CallerVerifier may accept the app by signing
+          # identifier alone. Release omits this, so it fails closed on a nil
+          # team-id read instead of accepting identifier-only.
+          SWIFT_ACTIVE_COMPILATION_CONDITIONS: $(inherited) CCVIGIL_ADHOC_DAEMON_AUTH
     dependencies:
       - package: CCVigilShared
         product: CCVigilShared
@@ -155,6 +165,8 @@ targets:
     platform: macOS
     sources:
       - path: Sources/Helper
+      # Caller-verification edge adapters shared with the daemon (see above).
+      - path: Sources/Shared
     info:
       path: Generated/Helper-Info.plist
       properties:

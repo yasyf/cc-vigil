@@ -5,6 +5,15 @@ import Dispatch
 import Foundation
 import os
 
+// Only ad-hoc/dev daemon builds (the Debug config sets CCVIGIL_ADHOC_DAEMON_AUTH
+// in project.yml) may accept the app by signing identifier alone. Release never
+// sets the flag, so a Release build whose team-id read returns nil fails closed.
+#if CCVIGIL_ADHOC_DAEMON_AUTH
+    private let allowIdentifierOnlyFallback = true
+#else
+    private let allowIdentifierOnlyFallback = false
+#endif
+
 @main
 enum DaemonMain {
     static func main() async {
@@ -163,7 +172,14 @@ enum DaemonMain {
             services.append(lidMonitor)
         }
         if !options.dryRun, let broadcaster {
-            let appServer = AppXPCServer(broadcaster: broadcaster) {
+            let appServer = AppXPCServer(
+                broadcaster: broadcaster,
+                verifier: CallerVerifier(
+                    clientIdentifier: AppXPC.appIdentifier,
+                    checker: SecCodeChecker(),
+                    allowIdentifierOnlyFallback: allowIdentifierOnlyFallback
+                )
+            ) {
                 await core.encodedStatus()
             }
             appServer.start()
