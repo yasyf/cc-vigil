@@ -3,7 +3,7 @@ import Foundation
 public enum VigilEvent: Equatable, Sendable {
     case daemonStarted(version: String, dryRun: Bool)
     case daemonStopped
-    case blockEdge(blocked: Bool, applied: Bool, decision: BlockDecision)
+    case blockEdge(blocked: Bool, applied: Bool, decision: BlockDecision, holds: [Hold])
     case cutoutLatched(CutoutKind)
     case cutoutCleared(CutoutKind)
     case lidChanged(closed: Bool)
@@ -28,7 +28,7 @@ public struct EventRecord: Equatable, Sendable {
 
 extension EventRecord: Codable {
     private enum CodingKeys: String, CodingKey {
-        case at, event, version, dryRun, blocked, applied, decision, kind, closed,
+        case at, event, version, dryRun, blocked, applied, decision, holds, kind, closed,
              hold, key, keys, path, message, until
     }
 
@@ -61,7 +61,8 @@ extension EventRecord: Codable {
             try .blockEdge(
                 blocked: container.decode(Bool.self, forKey: .blocked),
                 applied: container.decode(Bool.self, forKey: .applied),
-                decision: container.decode(BlockDecision.self, forKey: .decision)
+                decision: container.decode(BlockDecision.self, forKey: .decision),
+                holds: container.decode([Hold].self, forKey: .holds)
             )
         case .cutoutLatched:
             try .cutoutLatched(container.decode(CutoutKind.self, forKey: .kind))
@@ -100,11 +101,12 @@ extension EventRecord: Codable {
             try container.encode(dryRun, forKey: .dryRun)
         case .daemonStopped:
             try container.encode(Kind.daemonStopped, forKey: .event)
-        case let .blockEdge(blocked, applied, decision):
+        case let .blockEdge(blocked, applied, decision, holds):
             try container.encode(Kind.blockEdge, forKey: .event)
             try container.encode(blocked, forKey: .blocked)
             try container.encode(applied, forKey: .applied)
             try container.encode(decision, forKey: .decision)
+            try container.encode(holds, forKey: .holds)
         case let .cutoutLatched(kind):
             try container.encode(Kind.cutoutLatched, forKey: .event)
             try container.encode(kind, forKey: .kind)

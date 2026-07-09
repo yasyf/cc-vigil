@@ -10,7 +10,7 @@ private func at(_ epoch: Int64) -> Date {
 private let emptyDecision = BlockDecision(shouldBlock: false, activeSessions: [], discounts: [])
 
 private func edge(_ blocked: Bool, at epoch: Int64) -> EventRecord {
-    EventRecord(at: at(epoch), event: .blockEdge(blocked: blocked, applied: blocked, decision: emptyDecision))
+    EventRecord(at: at(epoch), event: .blockEdge(blocked: blocked, applied: blocked, decision: emptyDecision, holds: []))
 }
 
 @Test func nothingHappenedYieldsNoLines() {

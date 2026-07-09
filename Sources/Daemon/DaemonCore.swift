@@ -89,7 +89,7 @@ actor DaemonCore {
             shuttingDown: clearLatch.isClearing
         ).desired
         lastDesired = desired
-        await pushIfNeeded(desired: desired, decision: decision, now: now)
+        await pushIfNeeded(desired: desired, decision: decision, holds: activeHolds, now: now)
         publishStatus()
     }
 
@@ -305,15 +305,15 @@ actor DaemonCore {
         }
     }
 
-    private func pushIfNeeded(desired: Bool, decision: BlockDecision, now: Date) async {
+    private func pushIfNeeded(desired: Bool, decision: BlockDecision, holds: [Hold], now: Date) async {
         guard let plan = pushDecider.plan(desired: desired, now: now) else { return }
         let outcome = await pusher.push(blocked: desired)
         recordPush(outcome, desired: desired, generation: plan.generation)
         if plan.edge {
             let detail = "desired=\(desired) applied=\(appliedBlocked)"
-                + " sessions=\(decision.activeSessions.count)"
+                + " sessions=\(decision.activeSessions.count) holds=\(holds.count)"
             Logger.daemon.info("block edge: \(detail, privacy: .public)")
-            record(.blockEdge(blocked: desired, applied: appliedBlocked, decision: decision))
+            record(.blockEdge(blocked: desired, applied: appliedBlocked, decision: decision, holds: holds))
         }
     }
 

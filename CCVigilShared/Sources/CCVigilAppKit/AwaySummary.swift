@@ -79,7 +79,7 @@ public enum AwayDigest {
         var openStart: Date?
         for record in records where record.at <= now {
             switch record.event {
-            case let .blockEdge(blocked, _, _) where blocked:
+            case let .blockEdge(blocked, _, _, _) where blocked:
                 openStart = openStart ?? record.at
             // A block-off edge or a daemon stop (or the restart after a crash)
             // ends any open block.

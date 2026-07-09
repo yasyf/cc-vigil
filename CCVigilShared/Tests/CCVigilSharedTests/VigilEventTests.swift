@@ -15,11 +15,21 @@ private func json(_ record: EventRecord) throws -> String {
         activeSessions: [ActiveSession(path: "/t/a.jsonl", reasons: [.midTool, .waiting])],
         discounts: [SessionDiscount(path: "/t/b.jsonl", reason: .pendingAsyncMaxAge)]
     )
-    let record = EventRecord(at: at, event: .blockEdge(blocked: true, applied: true, decision: decision))
+    let record = EventRecord(at: at, event: .blockEdge(blocked: true, applied: true, decision: decision, holds: []))
     #expect(try json(record) == "{\"applied\":true,\"at\":1767323047,\"blocked\":true,"
         + "\"decision\":{\"activeSessions\":[{\"path\":\"/t/a.jsonl\",\"reasons\":[\"mid-tool\",\"waiting\"]}],"
         + "\"discounts\":[{\"path\":\"/t/b.jsonl\",\"reason\":\"pending-async-max-age\"}],\"shouldBlock\":true},"
-        + "\"event\":\"block-edge\"}")
+        + "\"event\":\"block-edge\",\"holds\":[]}")
+}
+
+@Test func holdDrivenBlockEdgeSelfDescribesWithItsActiveHolds() throws {
+    let decision = BlockDecision(shouldBlock: false, activeSessions: [], discounts: [])
+    let hold = Hold(key: "ci", reason: "cargo build", ttlSeconds: 600, createdAt: at, pid: 4242)
+    let record = EventRecord(at: at, event: .blockEdge(blocked: true, applied: true, decision: decision, holds: [hold]))
+    #expect(try json(record) == "{\"applied\":true,\"at\":1767323047,\"blocked\":true,"
+        + "\"decision\":{\"activeSessions\":[],\"discounts\":[],\"shouldBlock\":false},"
+        + "\"event\":\"block-edge\",\"holds\":[{\"createdAt\":1767323047,\"key\":\"ci\","
+        + "\"pid\":4242,\"reason\":\"cargo build\",\"ttlSeconds\":600}]}")
 }
 
 @Test(arguments: [
@@ -78,7 +88,8 @@ func encodesExactJSON(record: EventRecord, expected: String) throws {
         event: .blockEdge(
             blocked: false,
             applied: false,
-            decision: BlockDecision(shouldBlock: false, activeSessions: [], discounts: [])
+            decision: BlockDecision(shouldBlock: false, activeSessions: [], discounts: []),
+            holds: [Hold(key: "k", reason: "r", ttlSeconds: 60, createdAt: at, pid: nil)]
         )
     ),
     EventRecord(at: at, event: .holdAdded(Hold(key: "k", reason: "r", ttlSeconds: 60, createdAt: at, pid: nil))),
