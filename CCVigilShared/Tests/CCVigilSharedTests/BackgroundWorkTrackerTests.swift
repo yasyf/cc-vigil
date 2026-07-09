@@ -51,6 +51,43 @@ func stopWithBackgroundTasksRecordsReport(hookEvent: String) {
     #expect(tracker.reportsBySessionID.isEmpty)
 }
 
+/// A SubagentStop payload describes only the finishing subagent, not the whole
+/// session, so its zero/missing counts must never wipe a live top-level
+/// run_in_background job the Stop hook recorded — that would reintroduce the H2
+/// hold-loss bug. Only a Stop may clear (fail toward awake).
+@Test(arguments: [
+    (Int?.some(0), Int?.some(0)),
+    (Int?.none, Int?.none),
+])
+func subagentStopZeroOrOmittedKeepsStopReport(backgroundTasks: Int?, sessionCrons: Int?) {
+    var tracker = BackgroundWorkTracker()
+    tracker.apply(stop(backgroundTasks: 2, sessionCrons: 0), now: now)
+    tracker.apply(
+        stop(hookEvent: "SubagentStop", backgroundTasks: backgroundTasks, sessionCrons: sessionCrons),
+        now: Date(timeIntervalSince1970: 2000)
+    )
+    #expect(tracker.reportsBySessionID == [
+        "abc": BackgroundWorkReport(backgroundTasks: 2, sessionCrons: 0, epoch: 1000),
+    ])
+}
+
+/// A subagent can still spawn its own background work: a SubagentStop carrying
+/// positive counts records a new report and refreshes an existing one's epoch.
+@Test func subagentStopPositiveSetsAndRefreshes() {
+    var tracker = BackgroundWorkTracker()
+    tracker.apply(stop(hookEvent: "SubagentStop", backgroundTasks: 1, sessionCrons: 0), now: now)
+    #expect(tracker.reportsBySessionID == [
+        "abc": BackgroundWorkReport(backgroundTasks: 1, sessionCrons: 0, epoch: 1000),
+    ])
+    tracker.apply(
+        stop(hookEvent: "SubagentStop", backgroundTasks: 3, sessionCrons: 1),
+        now: Date(timeIntervalSince1970: 4000)
+    )
+    #expect(tracker.reportsBySessionID == [
+        "abc": BackgroundWorkReport(backgroundTasks: 3, sessionCrons: 1, epoch: 4000),
+    ])
+}
+
 /// Background jobs survive new turns — the exact reason the transcript alone
 /// cannot see them — so a fresh prompt must not erase the report.
 @Test func userPromptSubmitDoesNotClearReport() {
