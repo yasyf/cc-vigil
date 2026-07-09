@@ -14,8 +14,12 @@ public struct PauseCommand: ParsableCommand {
 
     public init() {}
 
+    public static func clampedSeconds(from duration: String) throws -> Int {
+        try min(Durations.seconds(from: duration), Hold.maxTTLSeconds)
+    }
+
     public func run() throws {
-        let seconds = try Durations.seconds(from: duration)
+        let seconds = try Self.clampedSeconds(from: duration)
         try requireOK(socketOptions.client.roundTrip(.pause(seconds: seconds)))
         print("paused for \(Durations.text(forSeconds: seconds))")
     }
