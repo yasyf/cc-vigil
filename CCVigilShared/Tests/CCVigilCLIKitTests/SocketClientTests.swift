@@ -79,7 +79,9 @@ private let sampleReport = StatusReport(
 @Test func sendDeliversWithoutAwaitingAReply() throws {
     let dir = try ShortTempDir(prefix: "sock")
     defer { dir.tearDown() }
-    let server = FakeSocketServer(path: dir.socketPath("s.sock"), reply: .silence)
+    // The server always replies, mirroring production: send() closes without
+    // reading it, and neither peer may take SIGPIPE writing to the gone side.
+    let server = FakeSocketServer(path: dir.socketPath("s.sock"), reply: .respond(.ok))
     try server.start()
     defer { server.stop() }
     let client = SocketClient(path: server.path, timeoutSeconds: 5)

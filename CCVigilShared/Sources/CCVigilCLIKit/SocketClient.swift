@@ -67,6 +67,10 @@ public struct SocketClient: Sendable {
         let descriptor = socket(AF_UNIX, SOCK_STREAM, 0)
         guard descriptor >= 0 else { throw SocketClientError.connectFailed(errno: errno) }
         defer { close(descriptor) }
+        // A write to a daemon that closed its end must surface EPIPE through
+        // sendFailed, never raise SIGPIPE and kill the CLI or its host process.
+        var noSigPipe: Int32 = 1
+        setsockopt(descriptor, SOL_SOCKET, SO_NOSIGPIPE, &noSigPipe, socklen_t(MemoryLayout<Int32>.size))
         var timeout = timeval(tv_sec: timeoutSeconds, tv_usec: 0)
         let timeoutSize = socklen_t(MemoryLayout<timeval>.size)
         setsockopt(descriptor, SOL_SOCKET, SO_RCVTIMEO, &timeout, timeoutSize)

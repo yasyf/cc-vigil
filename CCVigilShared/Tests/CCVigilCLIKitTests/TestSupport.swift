@@ -3,6 +3,15 @@ import Darwin
 import Foundation
 import os
 
+/// The in-process fake servers reply to fire-and-forget peers exactly like the
+/// production daemon, so a reply write to a peer that already closed would raise
+/// SIGPIPE and kill the swiftpm test process (exit signal 13). Install the same
+/// process-wide disposition DaemonMain sets at startup — once, lazily, gated on
+/// the first fake server start — so the fake-server tests stay deterministic.
+let ignoreSigPipeForTests: Void = {
+    _ = signal(SIGPIPE, SIG_IGN)
+}()
+
 enum FakeServerError: Error {
     case syscall(String, Int32)
 }
@@ -56,6 +65,7 @@ final class FakeSocketServer: @unchecked Sendable {
     }
 
     func start() throws {
+        _ = ignoreSigPipeForTests
         let descriptor = socket(AF_UNIX, SOCK_STREAM, 0)
         guard descriptor >= 0 else { throw FakeServerError.syscall("socket", errno) }
         unlink(path)
@@ -98,6 +108,10 @@ final class FakeSocketServer: @unchecked Sendable {
     }
 
     private func serve(_ descriptor: Int32) {
+        // Mirror the production daemon: a reply written to a fire-and-forget peer
+        // that already closed must return EPIPE, not raise SIGPIPE in the tests.
+        var noSigPipe: Int32 = 1
+        setsockopt(descriptor, SOL_SOCKET, SO_NOSIGPIPE, &noSigPipe, socklen_t(MemoryLayout<Int32>.size))
         var buffer = Data()
         var chunk = [UInt8](repeating: 0, count: 65536)
         while true {

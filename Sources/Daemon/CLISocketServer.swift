@@ -82,6 +82,11 @@ final class CLISocketServer: @unchecked Sendable {
 
     private func serve(_ descriptor: Int32) {
         defer { close(descriptor) }
+        // Nudge peers fire-and-forget: they close before reading the reply, so a
+        // write to the gone peer must return EPIPE rather than raise SIGPIPE and
+        // kill the daemon. SO_NOSIGPIPE is per-socket and not inherited by accept.
+        var noSigPipe: Int32 = 1
+        setsockopt(descriptor, SOL_SOCKET, SO_NOSIGPIPE, &noSigPipe, socklen_t(MemoryLayout<Int32>.size))
         var timeout = timeval(tv_sec: Self.ioTimeoutSeconds, tv_usec: 0)
         let timeoutSize = socklen_t(MemoryLayout<timeval>.size)
         setsockopt(descriptor, SOL_SOCKET, SO_RCVTIMEO, &timeout, timeoutSize)
@@ -152,7 +157,10 @@ final class CLISocketServer: @unchecked Sendable {
             var offset = 0
             while offset < raw.count {
                 let written = write(descriptor, base + offset, raw.count - offset)
-                guard written > 0 else { return }
+                guard written > 0 else {
+                    Logger.cli.debug("CLI reply write ended early (errno \(errno, privacy: .public)); peer disconnected")
+                    return
+                }
                 offset += written
             }
         }

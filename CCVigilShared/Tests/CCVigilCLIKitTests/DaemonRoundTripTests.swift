@@ -255,6 +255,23 @@ struct DaemonRoundTripTests {
         #expect(versionRun.stdout.contains("."))
     }
 
+    @Test func survivesFireAndForgetNudgePeers() throws {
+        let harness = try DaemonHarness()
+        defer { harness.stop() }
+        try harness.waitUntilReady()
+        let client = SocketClient(path: harness.socketPath)
+
+        // The nudge hook fires and forgets: it writes the frame and closes before
+        // the daemon replies. The daemon's reply to the gone peer must return
+        // EPIPE, not raise SIGPIPE and terminate the process (exit 141).
+        for index in 0 ..< 8 {
+            try client.send(.nudge(NudgePayload(sessionId: "sigpipe-\(index)", hookEvent: "PreToolUse")))
+        }
+
+        // A fresh round-trip proves the daemon is still alive.
+        #expect(try client.roundTrip(.ping) == .ok)
+    }
+
     @Test func nudgeFailsOpenWithoutADaemon() throws {
         let dir = try ShortTempDir(prefix: "vigil-nod")
         defer { dir.tearDown() }

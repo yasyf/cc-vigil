@@ -1,5 +1,6 @@
 import CCVigilDaemonKit
 import CCVigilShared
+import Darwin
 import Dispatch
 import Foundation
 import os
@@ -7,6 +8,13 @@ import os
 @main
 enum DaemonMain {
     static func main() async {
+        // Fire-and-forget CLI peers (the nudge hook) close before reading the
+        // reply. Per-socket SO_NOSIGPIPE covers the reply write, but a broken
+        // peer still trips SIGPIPE on a libdispatch worker that masks it, so the
+        // signal is redirected to the main thread and terminates the daemon.
+        // Ignoring SIGPIPE process-wide is the standard server hygiene that lets
+        // the EPIPE surface at the write instead.
+        Darwin.signal(SIGPIPE, SIG_IGN)
         let options = DaemonOptions.parse(
             arguments: Array(CommandLine.arguments.dropFirst()),
             environment: ProcessInfo.processInfo.environment
