@@ -76,6 +76,22 @@ private let sampleReport = StatusReport(
     }
 }
 
+@Test func sendDeliversWithoutAwaitingAReply() throws {
+    let dir = try ShortTempDir(prefix: "sock")
+    defer { dir.tearDown() }
+    let server = FakeSocketServer(path: dir.socketPath("s.sock"), reply: .silence)
+    try server.start()
+    defer { server.stop() }
+    let client = SocketClient(path: server.path, timeoutSeconds: 5)
+    let payload = NudgePayload(sessionId: "s", hookEvent: "PreToolUse")
+    try client.send(.nudge(payload))
+    let deadline = Date().addingTimeInterval(2)
+    while server.requests.isEmpty, Date() < deadline {
+        Thread.sleep(forTimeInterval: 0.005)
+    }
+    #expect(server.requests == [.nudge(payload)])
+}
+
 @Test func reportsClosedConnection() throws {
     let dir = try ShortTempDir(prefix: "sock")
     defer { dir.tearDown() }

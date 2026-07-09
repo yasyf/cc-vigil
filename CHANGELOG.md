@@ -6,6 +6,19 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Fixed
+- The human-wait hint a tool-permission prompt sets now clears when the human
+  approves the tool, so the Mac no longer sleeps partway through a long approved
+  tool such as a 25-minute `cargo build`. Approval writes nothing to the
+  transcript and fired no installed hook, so the hint outlived the approval and
+  discounted the still-working session. cc-vigil now installs a `PreToolUse`
+  nudge — the only signal that the approval landed, since the transcript does not
+  advance until the tool returns — and clears the hint on it. The nudge is
+  fire-and-forget, so the pre-tool hook, which blocks the tool it precedes, never
+  waits on the daemon's reply. Existing installs pick up the new hook the next
+  time the app runs its installer, or when you run `cc-vigil install-hooks`;
+  there is no back-compat shim.
+
 ## [0.1.1] - 2026-07-08
 
 ### Fixed

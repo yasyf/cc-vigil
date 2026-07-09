@@ -21,11 +21,12 @@ private func settings(_ json: String) -> Data {
     #expect(HookInstaller.command(cliPath: "/usr/local/bin/cc-vigil") == "/usr/local/bin/cc-vigil nudge")
 }
 
-@Test func installIntoMissingFileCreatesAllFourEvents() throws {
+@Test func installIntoMissingFileCreatesAllEvents() throws {
     let result = try HookInstaller.install(into: nil, cliPath: cliPath)
     let expected: NSDictionary = [
         "hooks": [
             "UserPromptSubmit": [vigilGroup()],
+            "PreToolUse": [vigilGroup()],
             "Stop": [vigilGroup()],
             "SubagentStop": [vigilGroup()],
             "Notification": [vigilGroup()],
@@ -55,7 +56,10 @@ private func settings(_ json: String) -> Data {
                 ["hooks": [["type": "command", "command": "afplay /System/Library/Sounds/Glass.aiff"]]],
                 vigilGroup(),
             ],
-            "PreToolUse": [["matcher": "Bash", "hooks": [["type": "command", "command": "my-guard"]]]],
+            "PreToolUse": [
+                ["matcher": "Bash", "hooks": [["type": "command", "command": "my-guard"]]],
+                vigilGroup(),
+            ],
             "UserPromptSubmit": [vigilGroup()],
             "SubagentStop": [vigilGroup()],
             "Notification": [vigilGroup()],
@@ -113,7 +117,7 @@ private func settings(_ json: String) -> Data {
     let original = settings(#"""
     {
       "hooks": {
-        "PreToolUse": [
+        "PostToolUse": [
           {"matcher": "Bash", "hooks": [
             {"type": "command", "command": "my-guard"},
             {"type": "command", "command": "old nudge", "_cc_vigil": true}
@@ -125,11 +129,37 @@ private func settings(_ json: String) -> Data {
     """#)
     let result = try HookInstaller.install(into: original, cliPath: cliPath)
     let root = try parsed(result)
-    let preToolUse = try #require((root["hooks"] as? NSDictionary)?["PreToolUse"] as? [NSDictionary])
-    #expect(preToolUse == [
+    let postToolUse = try #require((root["hooks"] as? NSDictionary)?["PostToolUse"] as? [NSDictionary])
+    #expect(postToolUse == [
         ["matcher": "Bash", "hooks": [["type": "command", "command": "my-guard"]]],
     ])
     #expect(try HookInstaller.state(of: result, cliPath: cliPath) == .installed)
+}
+
+@Test func installMergesPreToolUseNudgeBesideAUserGuard() throws {
+    let original = settings(#"""
+    {
+      "hooks": {
+        "PreToolUse": [{"matcher": "Bash", "hooks": [{"type": "command", "command": "my-guard"}]}]
+      }
+    }
+    """#)
+    let installed = try HookInstaller.install(into: original, cliPath: cliPath)
+    let root = try parsed(installed)
+    let preToolUse = try #require((root["hooks"] as? NSDictionary)?["PreToolUse"] as? [NSDictionary])
+    #expect(preToolUse == [
+        ["matcher": "Bash", "hooks": [["type": "command", "command": "my-guard"]]],
+        vigilGroup() as NSDictionary,
+    ])
+    #expect(try HookInstaller.state(of: installed, cliPath: cliPath) == .installed)
+
+    let removed = try HookInstaller.remove(from: installed)
+    let afterRoot = try parsed(removed)
+    let afterPreToolUse = try #require((afterRoot["hooks"] as? NSDictionary)?["PreToolUse"] as? [NSDictionary])
+    #expect(afterPreToolUse == [
+        ["matcher": "Bash", "hooks": [["type": "command", "command": "my-guard"]]],
+    ])
+    #expect(try HookInstaller.state(of: removed, cliPath: cliPath) == .notInstalled)
 }
 
 @Test func installIsIdempotent() throws {
@@ -236,7 +266,7 @@ func installRefusesMalformedSettings(json: String, expected: HookInstallerError)
     let installed = try HookInstaller.install(into: nil, cliPath: cliPath)
     var root = try #require(JSONSerialization.jsonObject(with: installed) as? [String: Any])
     var hooks = try #require(root["hooks"] as? [String: Any])
-    hooks["PreToolUse"] = [vigilGroup()]
+    hooks["PostToolUse"] = [vigilGroup()]
     root["hooks"] = hooks
     let strayed = try JSONSerialization.data(withJSONObject: root)
     #expect(try HookInstaller.state(of: strayed, cliPath: cliPath) == .modifiedExternally)

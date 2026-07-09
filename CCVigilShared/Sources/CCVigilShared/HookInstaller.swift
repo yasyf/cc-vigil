@@ -13,7 +13,7 @@ public enum HookInstallState: String, Equatable, Sendable {
 }
 
 public enum HookInstaller {
-    public static let hookEvents = ["UserPromptSubmit", "Stop", "SubagentStop", "Notification"]
+    public static let hookEvents = ["UserPromptSubmit", "PreToolUse", "Stop", "SubagentStop", "Notification"]
     public static let tagKey = "_cc_vigil"
 
     public static func command(cliPath: String) -> String {

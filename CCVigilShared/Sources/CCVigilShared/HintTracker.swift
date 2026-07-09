@@ -3,6 +3,7 @@ import Foundation
 public struct HintTracker: Equatable, Sendable {
     public static let waitHookEvent = "Notification"
     public static let clearHookEvent = "UserPromptSubmit"
+    public static let approvalHookEvent = "PreToolUse"
 
     public private(set) var waitEpochsBySessionID: [String: Int64] = [:]
 
@@ -31,7 +32,11 @@ public struct HintTracker: Equatable, Sendable {
         case Self.waitHookEvent:
             guard Self.isHumanWaiting(nudge.notificationKind) else { break }
             waitEpochsBySessionID[sessionID] = Int64(now.timeIntervalSince1970)
-        case Self.clearHookEvent:
+        case Self.clearHookEvent, Self.approvalHookEvent:
+            // Approving a tool-permission prompt fires PreToolUse and writes
+            // nothing to the transcript until the tool returns, so it is the only
+            // signal that the human unparked the turn and the long approved tool
+            // is now running: clear the hint so the pending work blocks again.
             waitEpochsBySessionID.removeValue(forKey: sessionID)
         default:
             break

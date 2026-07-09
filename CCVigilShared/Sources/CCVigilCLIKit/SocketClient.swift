@@ -44,6 +44,23 @@ public struct SocketClient: Sendable {
     }
 
     public func roundTrip(_ request: WireRequest) throws -> WireResponse {
+        try withConnection { descriptor in
+            try writeFrame(request, to: descriptor)
+            return try receiveResponse(from: descriptor)
+        }
+    }
+
+    /// Fire-and-forget: connect, write the frame, and return without awaiting a
+    /// reply. The nudge hook path uses this so a slow or wedged daemon cannot
+    /// block a PreToolUse hook — which stalls the tool it precedes — for the full
+    /// reply timeout. The daemon still reads and applies the buffered frame.
+    public func send(_ request: WireRequest) throws {
+        try withConnection { descriptor in
+            try writeFrame(request, to: descriptor)
+        }
+    }
+
+    private func withConnection<T>(_ body: (Int32) throws -> T) throws -> T {
         guard path.utf8.count < Self.maxSunPathBytes else {
             throw SocketClientError.pathTooLong(path)
         }
@@ -66,11 +83,10 @@ public struct SocketClient: Sendable {
             }
         }
         guard connected == 0 else { throw SocketClientError.connectFailed(errno: errno) }
-        try send(request, to: descriptor)
-        return try receiveResponse(from: descriptor)
+        return try body(descriptor)
     }
 
-    private func send(_ request: WireRequest, to descriptor: Int32) throws {
+    private func writeFrame(_ request: WireRequest, to descriptor: Int32) throws {
         let frame = try WireCodec.encodeFrame(request)
         try frame.withUnsafeBytes { (raw: UnsafeRawBufferPointer) in
             guard let base = raw.baseAddress else { return }

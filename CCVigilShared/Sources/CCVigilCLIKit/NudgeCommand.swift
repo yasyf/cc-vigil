@@ -21,7 +21,7 @@ public struct NudgeCommand: ParsableCommand {
                 fromHookJSON: input,
                 claudePid: ClaudeAncestry.nearestClaudeAncestorOfSelf()
             )
-            try requireOK(socketOptions.client.roundTrip(.nudge(payload)))
+            try socketOptions.client.send(.nudge(payload))
         } catch {
             let warning = "cc-vigil: nudge failed: \(String(describing: error))\n"
             FileHandle.standardError.write(Data(warning.utf8))
