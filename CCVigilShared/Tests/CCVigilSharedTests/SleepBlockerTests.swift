@@ -149,3 +149,25 @@ func blockerPmsetFailureLeavesUnsettledUnknown(failure: PmsetRunResult) {
     #expect(report.state.isSettled == false)
     #expect(clamshell.calls == [false, false, false])
 }
+
+@Test func needsClearStartsTrueAndClearsWhenBootClearSettles() {
+    let clamshell = SequencedClamshell([
+        .exited(status: 1, stderr: "resource busy"),
+        .exited(status: 0, stderr: ""),
+    ])
+    let blocker = SleepBlocker(assertion: FakeIdleAssertion(), clamshell: clamshell)
+    #expect(blocker.needsClear == true)
+    let (report, attempts) = blocker.clearUntilSettled(maxAttempts: 4, nap: { _ in })
+    #expect(attempts == 2)
+    #expect(report.state.isSettled == true)
+    #expect(blocker.needsClear == false)
+}
+
+@Test func needsClearStaysTrueWhenBootClearNeverSettles() {
+    let clamshell = SequencedClamshell([.launchFailed(message: "ENOENT")])
+    let blocker = SleepBlocker(assertion: FakeIdleAssertion(), clamshell: clamshell)
+    let (report, attempts) = blocker.clearUntilSettled(maxAttempts: 4, nap: { _ in })
+    #expect(attempts == 4)
+    #expect(report.state.isSettled == false)
+    #expect(blocker.needsClear == true)
+}

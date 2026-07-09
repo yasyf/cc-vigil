@@ -23,10 +23,27 @@ enum HelperMain {
             clamshell: PmsetClamshellControl(launcher: SystemPmsetLauncher())
         )
 
-        let initialClear = blocker.setBlocked(false)
-        Logger.helper.info(
-            "init force-clear: pmset=\(String(describing: initialClear.pmset), privacy: .public)"
+        let (initialReport, initialAttempts) = blocker.clearUntilSettled(
+            maxAttempts: 4,
+            nap: { _ in Thread.sleep(forTimeInterval: 0.1) }
         )
+        if blocker.needsClear {
+            Logger.helper.fault(
+                """
+                init force-clear UNSETTLED after \(initialAttempts, privacy: .public) attempts; \
+                disablesleep may stay stuck until login: \
+                pmset=\(String(describing: initialReport.pmset), privacy: .public)
+                """
+            )
+        } else {
+            Logger.helper.info(
+                """
+                init force-clear: settled=\(initialReport.state.isSettled, privacy: .public) \
+                attempts=\(initialAttempts, privacy: .public) \
+                pmset=\(String(describing: initialReport.pmset), privacy: .public)
+                """
+            )
+        }
 
         signal(SIGTERM, SIG_IGN)
         let sigterm = DispatchSource.makeSignalSource(signal: SIGTERM, queue: .main)

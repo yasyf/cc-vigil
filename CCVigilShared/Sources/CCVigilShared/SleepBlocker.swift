@@ -40,6 +40,10 @@ public final class SleepBlocker: Sendable {
         mechanisms.withLockUnchecked { $0.policy.state }
     }
 
+    public var needsClear: Bool {
+        mechanisms.withLockUnchecked { $0.policy.needsClear }
+    }
+
     public func setBlocked(_ blocked: Bool) -> SleepBlockReport {
         mechanisms.withLockUnchecked { guarded in
             var pmsetResult: PmsetRunResult?
