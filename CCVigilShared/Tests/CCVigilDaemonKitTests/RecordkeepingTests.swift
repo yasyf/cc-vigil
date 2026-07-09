@@ -61,6 +61,39 @@ private let at = Date(timeIntervalSince1970: 1_767_323_047)
     #expect(try StateStore.load(url: url) == PersistedState(holds: [], pausedUntil: nil))
 }
 
+@Test func stateStoreQuarantinesCorruptFile() throws {
+    let directory = try temporaryDirectory()
+    defer { try? FileManager.default.removeItem(at: directory) }
+    let url = directory.appendingPathComponent("state.json")
+    let corruptBytes = Data("{ this is not valid state ".utf8)
+    try corruptBytes.write(to: url)
+
+    #expect(try StateStore.load(url: url) == PersistedState(holds: [], pausedUntil: nil))
+
+    let quarantine = url.appendingPathExtension("corrupt")
+    #expect(try Data(contentsOf: quarantine) == corruptBytes)
+
+    let state = PersistedState(
+        holds: [Hold(key: "ci", reason: "build", ttlSeconds: 600, createdAt: at, pid: 7)],
+        pausedUntil: at
+    )
+    try StateStore.save(state, to: url)
+    #expect(try StateStore.load(url: url) == state)
+}
+
+@Test func stateStoreQuarantineOverwritesPriorCorrupt() throws {
+    let directory = try temporaryDirectory()
+    defer { try? FileManager.default.removeItem(at: directory) }
+    let url = directory.appendingPathComponent("state.json")
+    let quarantine = url.appendingPathExtension("corrupt")
+    try Data("stale corrupt bytes".utf8).write(to: quarantine)
+    let corruptBytes = Data("fresh corrupt bytes {".utf8)
+    try corruptBytes.write(to: url)
+
+    #expect(try StateStore.load(url: url) == PersistedState(holds: [], pausedUntil: nil))
+    #expect(try Data(contentsOf: quarantine) == corruptBytes)
+}
+
 @Test func configLoaderDefaultsWhenAbsent() throws {
     let directory = try temporaryDirectory()
     defer { try? FileManager.default.removeItem(at: directory) }
