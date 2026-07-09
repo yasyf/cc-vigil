@@ -10,9 +10,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - The app posts a macOS notification when the block releases because agents
   finished — what was holding the Mac awake and when it wrapped up — and when
   a battery or thermal cutout latches mid-block, the one moment sleep
-  protection drops while agents are still working. Both are on by default;
-  the Settings window's Notifications section toggles them (`notifyOnRelease`
-  and `notifyOnCutout` in `config.json`). The first edge worth posting asks
+  protection drops while agents are still working. The release banner waits
+  until nothing is latched, held, paused, or still active, so a protection
+  drop never reads as an all-clear, and banners present even while a
+  cc-vigil window is frontmost. Both are on by default; the Settings
+  window's Notifications section toggles them (`notifyOnRelease` and
+  `notifyOnCutout` in `config.json`). The first edge worth posting asks
   macOS for notification permission.
 - The daemon re-asserts the sleep block when the Mac switches between AC and
   battery power. Plugging or unplugging an Apple Silicon MacBook with the lid
@@ -23,9 +26,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   name and a human-readable reason, so `pmset -g assertions` and Activity
   Monitor's Energy tab attribute the hold to cc-vigil instead of an anonymous
   assertion ID. It also arms a 15-minute timeout that releases the hold on
-  its own — the daemon's 60-second re-push re-arms it continuously, so a
-  healthy system never hits it and a wedged or orphaned helper loses the
-  hold instead of pinning the Mac awake.
+  its own — the daemon re-pushes on a 60-second reconcile clock, and config
+  now caps the poll cadences (`pollBlockingSeconds` 1–300, `pollIdleSeconds`
+  1–600), so a healthy system re-arms with at least ten minutes to spare and
+  a wedged or orphaned helper loses the hold instead of pinning the Mac
+  awake.
 - Sessions in a relocated Claude config root (`CLAUDE_CONFIG_DIR`) now hold
   the Mac awake instead of being invisible to the oracle. The nudge hook runs
   inside the session, so it forwards the relocated transcripts root that the
