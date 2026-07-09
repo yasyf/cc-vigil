@@ -38,3 +38,30 @@ public enum PowerSourceTransition {
         return previous.onBattery != current.onBattery
     }
 }
+
+/// The single funnel every battery write passes through, so the closed-lid safety
+/// poll and the IOPS callback cannot disagree about a transition. A write lands
+/// (`stored`) only when the reading actually differs from what is held, and it
+/// demands a re-assert (`reassert`) when that difference flipped the power source
+/// while a block is desired — the case where an Apple Silicon Mac can instant-
+/// sleep and drop the assertion. Routing both paths here stops a poll that
+/// observes the flip first from being swallowed by a later same-value callback.
+public struct BatteryWrite: Equatable, Sendable {
+    public let current: BatteryReading?
+    public let reading: BatteryReading
+    public let desiredBlocking: Bool
+
+    public init(current: BatteryReading?, reading: BatteryReading, desiredBlocking: Bool) {
+        self.current = current
+        self.reading = reading
+        self.desiredBlocking = desiredBlocking
+    }
+
+    public var stored: Bool {
+        reading != current
+    }
+
+    public var reassert: Bool {
+        stored && desiredBlocking && PowerSourceTransition.occurred(from: current, to: reading)
+    }
+}

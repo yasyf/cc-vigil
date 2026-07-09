@@ -225,14 +225,7 @@ actor DaemonCore {
     }
 
     func updateBattery(_ reading: BatteryReading) async {
-        guard reading != battery else { return }
-        let transitioned = PowerSourceTransition.occurred(from: battery, to: reading)
-        battery = reading
-        if transitioned, lastDesired {
-            let source = reading.onBattery ? "battery" : "AC"
-            Logger.daemon.info("power source transition to \(source, privacy: .public): re-asserting sleep block")
-            pushDecider.forceReassert()
-        }
+        guard setBattery(reading) else { return }
         await signal.nudge()
     }
 
@@ -299,7 +292,7 @@ actor DaemonCore {
         if blocking, lidClosed, now.timeIntervalSince(lastBatteryPollAt) >= Self.batterySafetyPollSeconds {
             lastBatteryPollAt = now
             if let sampled = batterySampler() {
-                battery = sampled
+                setBattery(sampled)
             }
         }
         let reading = battery ?? BatteryReading(onBattery: false, percent: 100)
@@ -393,6 +386,24 @@ actor DaemonCore {
 }
 
 private extension DaemonCore {
+    /// The single funnel both battery write paths pass through — the IOPS callback
+    /// and the closed-lid safety poll in `updateLatch`. It runs the transition
+    /// check (and forces a re-assert while a block is desired) *before* the reading
+    /// lands, so a poll that observes an AC↔battery flip first cannot be swallowed
+    /// by a later same-value callback early-returning on the unchanged reading.
+    @discardableResult
+    func setBattery(_ reading: BatteryReading) -> Bool {
+        let write = BatteryWrite(current: battery, reading: reading, desiredBlocking: lastDesired)
+        guard write.stored else { return false }
+        battery = reading
+        if write.reassert {
+            let source = reading.onBattery ? "battery" : "AC"
+            Logger.daemon.info("power source transition to \(source, privacy: .public): re-asserting sleep block")
+            pushDecider.forceReassert()
+        }
+        return true
+    }
+
     /// A launchd daemon never inherits the session's `CLAUDE_CONFIG_DIR`, so a
     /// relocated transcripts root is invisible until a nudge from that session
     /// carries it. Admit the root when it exists and its real path is not

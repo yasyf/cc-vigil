@@ -1,4 +1,5 @@
 import CCVigilShared
+import Foundation
 import Testing
 
 private func batterySource(
@@ -59,4 +60,87 @@ private func batterySource(
 ])
 func detectsPowerSourceTransition(previous: BatteryReading?, current: BatteryReading, expected: Bool) {
     #expect(PowerSourceTransition.occurred(from: previous, to: current) == expected)
+}
+
+@Test(arguments: [
+    (BatteryReading?.none, BatteryReading(onBattery: false, percent: 100), true, true, false),
+    (BatteryReading(onBattery: false, percent: 90), BatteryReading(onBattery: false, percent: 90), true, false, false),
+    (BatteryReading(onBattery: false, percent: 90), BatteryReading(onBattery: true, percent: 90), true, true, true),
+    (BatteryReading(onBattery: true, percent: 90), BatteryReading(onBattery: false, percent: 90), true, true, true),
+    (BatteryReading(onBattery: false, percent: 90), BatteryReading(onBattery: true, percent: 90), false, true, false),
+    (BatteryReading(onBattery: false, percent: 90), BatteryReading(onBattery: false, percent: 40), true, true, false),
+])
+func batteryWriteDecidesStorageAndReassert(
+    current: BatteryReading?,
+    reading: BatteryReading,
+    desiredBlocking: Bool,
+    stored: Bool,
+    reassert: Bool
+) {
+    let write = BatteryWrite(current: current, reading: reading, desiredBlocking: desiredBlocking)
+    #expect(write.stored == stored)
+    #expect(write.reassert == reassert)
+}
+
+private let powerEpoch = Date(timeIntervalSince1970: 1_000_000)
+
+/// Mirrors DaemonCore's single battery funnel: every write — the closed-lid
+/// safety poll and the IOPS callback alike — routes through BatteryWrite, so a
+/// power-source flip forces a PushDecider re-assert regardless of which path
+/// observed it first.
+private struct BatteryFunnel {
+    var battery: BatteryReading?
+    var decider = PushDecider(reconcileSeconds: 60)
+    var desiredBlocking = true
+
+    mutating func write(_ reading: BatteryReading) {
+        let write = BatteryWrite(current: battery, reading: reading, desiredBlocking: desiredBlocking)
+        guard write.stored else { return }
+        battery = reading
+        if write.reassert {
+            decider.forceReassert()
+        }
+    }
+
+    mutating func settle(now: Date) {
+        guard let plan = decider.plan(desired: true, now: now) else { return }
+        decider.record(desired: true, settled: true, generation: plan.generation, at: now)
+    }
+
+    func reassertPending(now: Date) -> Bool {
+        decider.plan(desired: true, now: now) != nil
+    }
+}
+
+@Test func safetyPollFlipWhileBlockingReasserts() {
+    let now = powerEpoch
+    var funnel = BatteryFunnel()
+    funnel.write(BatteryReading(onBattery: false, percent: 90))
+    funnel.settle(now: now)
+    #expect(funnel.reassertPending(now: now) == false)
+
+    funnel.write(BatteryReading(onBattery: true, percent: 90))
+    #expect(funnel.reassertPending(now: now))
+}
+
+@Test func sameSourceSafetyPollTickDoesNotReassert() {
+    let now = powerEpoch
+    var funnel = BatteryFunnel()
+    funnel.write(BatteryReading(onBattery: true, percent: 90))
+    funnel.settle(now: now)
+    #expect(funnel.reassertPending(now: now) == false)
+
+    funnel.write(BatteryReading(onBattery: true, percent: 80))
+    #expect(funnel.reassertPending(now: now) == false)
+}
+
+@Test func safetyPollTransitionSurvivesARedundantIopsCallback() {
+    let now = powerEpoch
+    var funnel = BatteryFunnel()
+    funnel.write(BatteryReading(onBattery: false, percent: 90))
+    funnel.settle(now: now)
+
+    funnel.write(BatteryReading(onBattery: true, percent: 90))
+    funnel.write(BatteryReading(onBattery: true, percent: 90))
+    #expect(funnel.reassertPending(now: now))
 }
