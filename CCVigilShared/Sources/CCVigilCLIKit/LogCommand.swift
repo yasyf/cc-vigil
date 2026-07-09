@@ -22,6 +22,12 @@ public struct LogCommand: ParsableCommand {
 
     public init() {}
 
+    public func validate() throws {
+        guard lines >= 0 else {
+            throw ValidationError("--lines must be zero or greater, got \(lines)")
+        }
+    }
+
     public func run() throws {
         let url = SupportPaths(directory: URL(fileURLWithPath: supportDir, isDirectory: true)).eventsURL
         guard FileManager.default.fileExists(atPath: url.path) else {
