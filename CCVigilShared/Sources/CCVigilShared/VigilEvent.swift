@@ -62,7 +62,7 @@ extension EventRecord: Codable {
                 blocked: container.decode(Bool.self, forKey: .blocked),
                 applied: container.decode(Bool.self, forKey: .applied),
                 decision: container.decode(BlockDecision.self, forKey: .decision),
-                holds: container.decode([Hold].self, forKey: .holds)
+                holds: container.decodeIfPresent([Hold].self, forKey: .holds) ?? []
             )
         case .cutoutLatched:
             try .cutoutLatched(container.decode(CutoutKind.self, forKey: .kind))
