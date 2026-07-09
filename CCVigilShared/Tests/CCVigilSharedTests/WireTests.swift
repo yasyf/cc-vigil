@@ -102,6 +102,7 @@ func frameDecodeNeedsMoreBytes(available: Int) throws {
         ),
         (.release(key: "deploy"), #"{"key":"deploy","op":"release"}"#),
         (.pause(seconds: 300), #"{"op":"pause","seconds":300}"#),
+        (.clear, #"{"op":"clear"}"#),
         (.ping, #"{"op":"ping"}"#),
     ]
     for (request, expected) in expectations {
@@ -118,6 +119,7 @@ func frameDecodeNeedsMoreBytes(available: Int) throws {
     .hold(key: "k", reason: "r", ttlSeconds: 600, pid: nil),
     .release(key: "k"),
     .pause(seconds: 300),
+    .clear,
     .ping,
 ])
 func requestRoundTripsThroughFrame(request: WireRequest) throws {
