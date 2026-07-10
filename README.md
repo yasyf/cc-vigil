@@ -51,7 +51,9 @@ The first run walks you through everything macOS requires:
 2. **Claude Code hooks** — the installer adds tagged `cc-vigil nudge` hooks to `~/.claude/settings.json`. Your existing hooks are preserved untouched, and `cc-vigil uninstall-hooks` removes only the tagged entries.
 3. **CLI on your PATH** — the bundled `cc-vigil` binary is symlinked into `/usr/local/bin` (or `~/.local/bin` when that isn't writable).
 
-After that the eye in your menu bar fills whenever the Mac is held awake, and the menu names the sessions holding it. You don't have to watch it: cc-vigil posts a notification when the last agent finishes and the Mac may sleep, and another when a battery or thermal cutout drops protection mid-run — the one moment sleep can catch working agents. Both are on by default; the Settings window turns them off.
+After that the eye in your menu bar fills whenever the Mac is held awake, and the menu names the sessions holding it. You don't have to watch it: cc-vigil posts a notification when the last agent finishes and the Mac may sleep, and another when a battery, thermal, or Low Power cutout drops protection mid-run — the one moment sleep can catch working agents. Both are on by default; the Settings window turns them off.
+
+If macOS keeps refusing the background items — registration fails twice in a row — the installer points at the fix: run `sfltool resetbtm` in Terminal and approve the items again. macOS occasionally wedges background-item registration machine-wide, and only the reset clears it.
 
 ## How it works
 
@@ -83,7 +85,9 @@ Two invariants:
 
 Clamshell runs also survive a charger swap: plugging or unplugging with the lid closed can instant-sleep an Apple Silicon Mac and drop the assertion, so the daemon re-asserts the block whenever the power source flips between AC and battery.
 
-Cutouts protect the hardware: on battery below the floor, or lid-closed at high temperature, the block releases and latches off until conditions recover (with hysteresis, so it doesn't flap). Manual `cc-vigil hold` and `pause` override the oracle in either direction.
+Cutouts protect the hardware: on battery below the floor, lid-closed at high temperature, or whenever macOS Low Power Mode is on, the block releases and latches off until conditions recover — battery and thermal latch with hysteresis so they don't flap; Low Power clears the moment the mode turns off. Manual `cc-vigil hold` and `pause` override the oracle in either direction.
+
+One machine, one `disablesleep`. The clamshell guard is a machine-wide `pmset` setting: two macOS users running cc-vigil on the same Mac contend for it, and whichever daemon clears it last wins. Single-user Macs never notice; on a shared Mac, pick one account to run cc-vigil.
 
 ## Configuration
 
@@ -99,7 +103,8 @@ Config lives at `~/Library/Application Support/cc-vigil/config.json`. Missing ke
 | `pollIdleSeconds`          | `45`    | 1–600 | Oracle cadence while idle.                                                                                             |
 | `hideMenuBarExtra`         | `false` | —     | Hide the menu-bar icon; relaunch CCVigil.app to bring it back.                                                         |
 | `notifyOnRelease`          | `true`  | —     | Post a notification when the block releases because the agents finished.                                               |
-| `notifyOnCutout`           | `true`  | —     | Post a notification when a battery or thermal cutout latches and drops protection mid-block.                           |
+| `notifyOnCutout`           | `true`  | —     | Post a notification when a battery, thermal, or Low Power cutout latches and drops protection mid-block.               |
+| `lowPowerCutout`           | `true`  | —     | Release the block and latch while macOS Low Power Mode is on; clears when the mode turns off.                          |
 | `transcriptsRoots`         | `[]`    | —     | Extra transcript roots to scan besides `~/.claude/projects`. Roots nudged from `CLAUDE_CONFIG_DIR` sessions register themselves. |
 
 ## CLI reference
@@ -118,6 +123,10 @@ Durations are bare seconds or compound units such as `90`, `30m`, `1h30m`, and `
 | `cc-vigil version`                                  | Print the version.                                                                                |
 
 Every block and unblock lands in `~/Library/Application Support/cc-vigil/events.log` as JSONL with the full oracle snapshot — per-session reasons for why the Mac was held awake or let go.
+
+## Shortcuts
+
+The app registers five App Intents — hold, release, pause, resume, and status — so Shortcuts, Spotlight, and Siri can drive the daemon without the CLI: "Hold cc-vigil awake", "Release cc-vigil", "Pause cc-vigil", "Resume cc-vigil", and "cc-vigil status". Hold and Pause take an optional duration under the same 24-hour cap as the CLI, and Status returns the same summary `cc-vigil status` prints, so a shortcut can chain on it. Launch CCVigil.app once after installing so Shortcuts indexes the intents; when the daemon is unreachable, an intent returns the error instead of hanging.
 
 ## Verification
 

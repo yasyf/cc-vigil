@@ -6,6 +6,42 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.3.0] - 2026-07-10
+
+### Added
+- Low Power Mode is a cutout: while macOS Low Power Mode is on, the block
+  releases and latches off, clearing the moment the mode turns off. On by
+  default; `lowPowerCutout` in `config.json` and the Settings window's
+  Cutouts section turn it off.
+- Shortcuts can drive the daemon: five App Intents — hold, release, pause,
+  resume, and status — wrap the existing daemon commands, keep the CLI's
+  24-hour cap on durations, return the status summary for chaining, and fail
+  with a readable error when the daemon is unreachable. Launch the app once
+  after upgrading so Shortcuts indexes them.
+- The daemon composes release and cutout notifications itself and stamps
+  each with a persisted, monotonically increasing id; the app replays alerts
+  it has not yet posted, exactly once across reconnects and app restarts.
+  Toasts no longer misfire or go unseen when an edge lands inside an XPC
+  disconnect gap. Alerts older than the recent-alert ring fall to the away
+  summary, and `events.log` stays the ground truth.
+- After two consecutive background-item registration failures, the installer
+  points at `sfltool resetbtm` — macOS occasionally wedges registration, and
+  only the reset clears it.
+
+### Changed
+- The oracle tracks each session's Claude process. A session whose process
+  died is discounted immediately — its stale transcript no longer pins the
+  Mac awake for up to 12 hours — while a session whose process is alive
+  keeps its hold past the old 12-hour cliff for as long as the work runs,
+  and its transcript stays in discovery past the scan window. Sessions the
+  hooks never reported a pid for behave exactly as before.
+- The transcript oracle matches tool names the way Claude Code spells them:
+  an `Execute` background command counts as backgrounded Bash, and
+  MCP-wrapped tools such as `mcp__<server>__SendMessage` match their
+  configured names. This rides the cc-transcript 10.4.0 oracle, which
+  captain-hook now consumes too — one predicate decides "waiting"
+  everywhere.
+
 ## [0.2.0] - 2026-07-09
 
 ### Added
@@ -248,7 +284,8 @@ Claude Code shipped as a signed and notarized menu-bar app.
   installer state machine, symlinker, away digest) lives in the new
   CCVigilAppKit library under `swift test`.
 
-[Unreleased]: https://github.com/yasyf/cc-vigil/compare/v0.2.0...HEAD
+[Unreleased]: https://github.com/yasyf/cc-vigil/compare/v0.3.0...HEAD
+[0.3.0]: https://github.com/yasyf/cc-vigil/compare/v0.2.0...v0.3.0
 [0.2.0]: https://github.com/yasyf/cc-vigil/compare/v0.1.1...v0.2.0
 [0.1.1]: https://github.com/yasyf/cc-vigil/releases/tag/v0.1.1
 [0.1.0]: https://github.com/yasyf/cc-vigil/releases/tag/v0.1.0
