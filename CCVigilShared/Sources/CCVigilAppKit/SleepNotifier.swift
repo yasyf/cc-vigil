@@ -85,6 +85,7 @@ public struct SleepNotifier {
         self.store = store
     }
 
+    /// Callers serialize consume() — the app invokes it from the @MainActor status stream — so the check-then-advance watermark update needs no internal synchronization.
     public func consume(
         _ event: StatusViewModel.Event,
         settings: NotificationSettings,

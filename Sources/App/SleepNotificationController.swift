@@ -40,6 +40,7 @@ final class SleepNotificationController: NSObject, UNUserNotificationCenterDeleg
         var pending: [SleepNotification] = []
         notifier.consume(event, settings: settings) { pending.append($0) }
         guard !pending.isEmpty else { return }
+        // Delivery past this hand-off is best-effort async; a crash before the OS accepts the toast falls to the away summary, by design.
         Task { await deliver(pending) }
     }
 

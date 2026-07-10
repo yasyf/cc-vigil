@@ -32,14 +32,16 @@ struct ServiceRegistrar {
         })
     }
 
-    func repair() -> [String] {
-        ManagedService.allCases.map { service in
-            switch reregister(service) {
+    func repair() -> (lines: [String], allRegistered: Bool) {
+        let outcomes = ManagedService.allCases.map { ($0, reregister($0)) }
+        let lines = outcomes.map { service, outcome in
+            switch outcome {
             case .registered: "\(service.rawValue): registered"
             case .notPermitted: "\(service.rawValue): not permitted"
             case let .failed(message): "\(service.rawValue): \(message)"
             }
         }
+        return (lines, outcomes.allSatisfy { $0.1 == .registered })
     }
 
     func unregisterAll() -> [String] {

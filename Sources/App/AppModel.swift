@@ -28,6 +28,7 @@ final class AppModel {
     @ObservationIgnored private let commands: DaemonCommands
     @ObservationIgnored private let notifications = SleepNotificationController()
     @ObservationIgnored private let registrar = ServiceRegistrar()
+    @ObservationIgnored private let repairHints = RepairHintTracker(store: UserDefaultsRepairFailureCountStore())
     @ObservationIgnored private let launchedAt = Date()
     @ObservationIgnored private var daemonClient: DaemonClient?
     @ObservationIgnored private var restartTask: Task<Void, Never>?
@@ -245,8 +246,8 @@ final class AppModel {
         maintenanceMessage = "re-registering services…"
         Task {
             let registrar = registrar
-            let lines = await Task.detached(priority: .userInitiated) { registrar.repair() }.value
-            maintenanceMessage = lines.joined(separator: "\n")
+            let result = await Task.detached(priority: .userInitiated) { registrar.repair() }.value
+            maintenanceMessage = repairHints.message(succeeded: result.allRegistered, lines: result.lines)
         }
     }
 
