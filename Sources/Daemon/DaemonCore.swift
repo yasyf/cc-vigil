@@ -359,54 +359,6 @@ actor DaemonCore {
             record(.blockEdge(blocked: desired, applied: appliedBlocked, decision: decision, holds: holds))
         }
     }
-
-    private func publishStatus() {
-        let status = statusReport()
-        guard status != lastStatus else { return }
-        lastStatus = status
-        guard let broadcaster, let payload = encodedStatus() else { return }
-        broadcaster.broadcast(payload)
-    }
-
-    private func expireHolds() {
-        let expired = holds.prune(clock: clock)
-        guard !expired.isEmpty else { return }
-        record(.holdsExpired(keys: expired.map(\.key)))
-        persistState()
-    }
-
-    private func expirePause(now: Date) {
-        guard let until = pausedUntil, until <= now else { return }
-        pausedUntil = nil
-        record(.resumed)
-        persistState()
-    }
-
-    private func persistState() {
-        do {
-            try StateStore.save(
-                PersistedState(
-                    holds: holds.holds,
-                    pausedUntil: pausedUntil,
-                    registeredRoots: rootRegistry.registeredRoots,
-                    nextAlertId: alertComposer.nextAlertId,
-                    recentAlerts: alertComposer.recentAlerts,
-                    alertedCutouts: alertComposer.alertedCutouts
-                ),
-                to: stateURL
-            )
-        } catch {
-            Logger.daemon.fault("state save failed: \(String(describing: error), privacy: .public)")
-        }
-    }
-
-    private func record(_ event: VigilEvent) {
-        do {
-            try eventLog.append(EventRecord(at: clock.now, event: event))
-        } catch {
-            Logger.daemon.fault("event log append failed: \(String(describing: error), privacy: .public)")
-        }
-    }
 }
 
 private extension DaemonCore {
@@ -494,6 +446,54 @@ private extension DaemonCore {
                     "session's Claude process is dead; discounted \(discount.path, privacy: .public)"
                 )
             }
+        }
+    }
+
+    func publishStatus() {
+        let status = statusReport()
+        guard status != lastStatus else { return }
+        lastStatus = status
+        guard let broadcaster, let payload = encodedStatus() else { return }
+        broadcaster.broadcast(payload)
+    }
+
+    func expireHolds() {
+        let expired = holds.prune(clock: clock)
+        guard !expired.isEmpty else { return }
+        record(.holdsExpired(keys: expired.map(\.key)))
+        persistState()
+    }
+
+    func expirePause(now: Date) {
+        guard let until = pausedUntil, until <= now else { return }
+        pausedUntil = nil
+        record(.resumed)
+        persistState()
+    }
+
+    func persistState() {
+        do {
+            try StateStore.save(
+                PersistedState(
+                    holds: holds.holds,
+                    pausedUntil: pausedUntil,
+                    registeredRoots: rootRegistry.registeredRoots,
+                    nextAlertId: alertComposer.nextAlertId,
+                    recentAlerts: alertComposer.recentAlerts,
+                    alertedCutouts: alertComposer.alertedCutouts
+                ),
+                to: stateURL
+            )
+        } catch {
+            Logger.daemon.fault("state save failed: \(String(describing: error), privacy: .public)")
+        }
+    }
+
+    func record(_ event: VigilEvent) {
+        do {
+            try eventLog.append(EventRecord(at: clock.now, event: event))
+        } catch {
+            Logger.daemon.fault("event log append failed: \(String(describing: error), privacy: .public)")
         }
     }
 }
