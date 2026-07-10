@@ -53,6 +53,6 @@ let package = Package(
             resources: [.copy("Fixtures")]
         ),
         .testTarget(name: "CCVigilCLIKitTests", dependencies: ["CCVigilCLIKit"]),
-        .testTarget(name: "CCVigilAppKitTests", dependencies: ["CCVigilAppKit"]),
+        .testTarget(name: "CCVigilAppKitTests", dependencies: ["CCVigilAppKit", "CCVigilCLIKit"]),
     ]
 )
