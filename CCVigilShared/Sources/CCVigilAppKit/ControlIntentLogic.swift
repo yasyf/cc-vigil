@@ -20,10 +20,12 @@ public enum ControlIntentLogic {
     /// the menu's "Pause for 1 Hour".
     public static let defaultPauseSeconds = 3600
 
-    /// Dialog for a non-positive requested duration. The App Intents surface has
-    /// no duration string to echo, so it states the rule plainly, mirroring the
-    /// CLI's `DurationParseError.nonPositive`.
-    public static let nonPositiveDurationDialog = "The duration must be positive."
+    /// Dialog for a duration that rounds below one second. The App Intents
+    /// surface has no duration string to echo, so it states the rule plainly,
+    /// mirroring the CLI's `DurationParseError.nonPositive`. Validating the
+    /// rounded value keeps a sub-second-positive pause from collapsing into
+    /// `.pause(seconds: 0)`, the Resume sentinel.
+    public static let nonPositiveDurationDialog = "The duration must be at least one second."
 
     public typealias Send = (WireRequest) async throws -> WireResponse
 
@@ -47,8 +49,9 @@ public enum ControlIntentLogic {
         guard value.isFinite, value <= Double(Hold.maxTTLSeconds) else {
             return .seconds(Hold.maxTTLSeconds)
         }
-        guard value > 0 else { return .invalid(nonPositiveDurationDialog) }
-        return .seconds(Int(value.rounded()))
+        let rounded = Int(value.rounded())
+        guard rounded > 0 else { return .invalid(nonPositiveDurationDialog) }
+        return .seconds(rounded)
     }
 
     public static func holdDialog(ttlSeconds: Int) -> String {

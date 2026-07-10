@@ -38,11 +38,20 @@ func requestedSecondsClampsToTheHoldCeiling(
     Measurement<UnitDuration>(value: 0, unit: .seconds),
     Measurement<UnitDuration>(value: -5, unit: .seconds),
     Measurement<UnitDuration>(value: -30, unit: .minutes),
+    Measurement<UnitDuration>(value: 0.4, unit: .seconds),
 ])
-func requestedSecondsRejectsNonPositiveDurations(duration: Measurement<UnitDuration>) {
+func requestedSecondsRejectsDurationsBelowOneSecond(duration: Measurement<UnitDuration>) {
     #expect(
         ControlIntentLogic.requestedSeconds(from: duration, default: 3600)
             == .invalid(ControlIntentLogic.nonPositiveDurationDialog)
+    )
+}
+
+@Test func requestedSecondsRoundsHalfASecondUpToOne() {
+    #expect(
+        ControlIntentLogic.requestedSeconds(
+            from: Measurement<UnitDuration>(value: 0.5, unit: .seconds), default: 3600
+        ) == .seconds(1)
     )
 }
 
