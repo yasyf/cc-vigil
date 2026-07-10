@@ -272,12 +272,17 @@ actor DaemonCore {
             probes = collection.probes
         }
         let paths = probes.map(\.sessionPath)
+        // TODO(cc-notes 0b9f2b5): populate sessionPids from a SessionPidTracker
+        // fed by nudges; empty keeps every session on the unmapped uniform cliff.
         let decision = OracleState(
             sessions: probes,
             humanWaitHints: hints.hints(forPaths: paths),
             backgroundWork: backgroundWork.reports(forPaths: paths),
+            sessionPids: [:],
             claudeProcessesAlive: alive
-        ).decision(config: config, clock: clock)
+        ).decision(config: config, clock: clock, processStart: { pid in
+            ProcessFacts.processStart(pid: pid).map { Int64($0.timeIntervalSince1970) }
+        })
         logFreshDiscounts(decision)
         lastDecision = decision
         return decision
@@ -441,6 +446,10 @@ private extension DaemonCore {
             case .humanWaitHint:
                 Logger.daemon.info(
                     "human-wait hint discounted \(discount.path, privacy: .public)"
+                )
+            case .sessionProcessDead:
+                Logger.daemon.info(
+                    "session's Claude process is dead; discounted \(discount.path, privacy: .public)"
                 )
             }
         }

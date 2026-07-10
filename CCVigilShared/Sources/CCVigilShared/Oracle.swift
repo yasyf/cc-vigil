@@ -58,6 +58,7 @@ public enum DiscountReason: String, Codable, Equatable, Sendable {
     case humanWaitHint = "human-wait-hint"
     case pendingAsyncMaxAge = "pending-async-max-age"
     case staleActivityMaxAge = "stale-activity-max-age"
+    case sessionProcessDead = "session-process-dead"
 }
 
 public struct ActiveSession: Codable, Equatable, Sendable {
@@ -96,21 +97,28 @@ public struct OracleState: Equatable, Sendable {
     public let sessions: [SessionProbe]
     public let humanWaitHints: [String: Int64]
     public let backgroundWork: [String: BackgroundWorkReport]
+    public let sessionPids: [String: TrackedPid]
     public let claudeProcessesAlive: Bool
 
     public init(
         sessions: [SessionProbe],
         humanWaitHints: [String: Int64],
         backgroundWork: [String: BackgroundWorkReport],
+        sessionPids: [String: TrackedPid],
         claudeProcessesAlive: Bool
     ) {
         self.sessions = sessions
         self.humanWaitHints = humanWaitHints
         self.backgroundWork = backgroundWork
+        self.sessionPids = sessionPids
         self.claudeProcessesAlive = claudeProcessesAlive
     }
 
-    public func decision(config: VigilConfig, clock: some WallClock) -> BlockDecision {
+    public func decision(
+        config: VigilConfig,
+        clock: some WallClock,
+        processStart: (Int32) -> Int64?
+    ) -> BlockDecision {
         guard claudeProcessesAlive else {
             return BlockDecision(shouldBlock: false, activeSessions: [], discounts: [])
         }
@@ -118,7 +126,7 @@ public struct OracleState: Equatable, Sendable {
         var active: [ActiveSession] = []
         var discounts: [SessionDiscount] = []
         for session in sessions {
-            let (reasons, discount) = evaluate(session, now: now, config: config)
+            let (reasons, discount) = evaluate(session, now: now, config: config, processStart: processStart)
             if !reasons.isEmpty {
                 active.append(ActiveSession(path: session.sessionPath, reasons: reasons))
             }
@@ -132,8 +140,20 @@ public struct OracleState: Equatable, Sendable {
     private func evaluate(
         _ session: SessionProbe,
         now: Int64,
-        config: VigilConfig
+        config: VigilConfig,
+        processStart: (Int32) -> Int64?
     ) -> (reasons: [ActivityReason], discount: DiscountReason?) {
+        // Per-session liveness (the SessionPidTracker rule): a mapped session
+        // whose Claude process is dead is discounted outright — a dead process
+        // writes nothing, so not even a recent transcript mtime can vouch for
+        // it. Known self-heal window: a --resume'd session keeps its dead old
+        // pid until the next nudge remaps it (latest-wins), wrongly discounting
+        // it for at most one nudge interval; the global claudeProcessesAlive
+        // gate keeps the machine awake while any claude process lives.
+        let tracked = sessionPids[session.sessionPath]
+        if let tracked, !processLive(tracked, processStart: processStart) {
+            return ([], .sessionProcessDead)
+        }
         // A live machine-driven wait — a run_in_background Bash, an async Task or
         // Workflow, a subagentless Agent, or a waiting tool like Monitor —
         // outranks the human-wait hint. Claude
@@ -160,15 +180,15 @@ public struct OracleState: Equatable, Sendable {
         if let epoch = session.lastEventEpoch, now - epoch <= Int64(config.activityWindowSeconds) {
             reasons.append(.recentActivity)
         }
-        // midTool and waiting carry no natural age cap, so a session whose
-        // transcript has not advanced past pendingAsyncMaxAgeSeconds is treated
-        // as leaked or dead and discounted. This keeps discovery's mtime window
+        // midTool and waiting carry no natural age cap, so an unmapped session
+        // — one no nudge ever carried a pid for — whose transcript has not
+        // advanced past pendingAsyncMaxAgeSeconds is treated as leaked or dead
+        // and discounted, keeping discovery's mtime window
         // (TranscriptDiscoveryPolicy) and the oracle's active set expressing one
-        // policy instead of two that disagree; the claudeProcessesAlive gate
-        // stays the primary liveness signal. TODO(cc-notes 0b9f2b5): per-session
-        // process liveness (the session's own pid, not the global gate) would
-        // remove this age cliff for genuinely-live long tool calls.
-        let stale = staleBeyondMaxAge(session, config: config, now: now)
+        // policy instead of two that disagree. For a mapped session the pid
+        // verdict replaces this cliff: dead was discounted above, and live holds
+        // past it — a genuinely-live process mid-long-work keeps its hold.
+        let stale = tracked == nil && staleBeyondMaxAge(session, config: config, now: now)
         var discount: DiscountReason?
         if session.midTool {
             if stale {
@@ -188,6 +208,15 @@ public struct OracleState: Equatable, Sendable {
             reasons.append(.backgroundWork)
         }
         return (reasons, discount)
+    }
+
+    private func processLive(_ tracked: TrackedPid, processStart: (Int32) -> Int64?) -> Bool {
+        guard let started = processStart(tracked.pid) else { return false }
+        // Both sides floored to whole seconds (capturedAtEpoch's units):
+        // flooring can only turn a borderline pid-reuse into "live", the safe
+        // direction — ambiguity resolves to live so the sleep inhibitor never
+        // sleeps the Mac on it.
+        return started <= tracked.capturedAtEpoch
     }
 
     private func staleBeyondMaxAge(_ session: SessionProbe, config: VigilConfig, now: Int64) -> Bool {

@@ -31,7 +31,8 @@ import Testing
         sessions: collection.probes,
         humanWaitHints: [:],
         backgroundWork: [:],
+        sessionPids: [:],
         claudeProcessesAlive: true
-    ).decision(config: .default, clock: clock)
+    ).decision(config: .default, clock: clock, processStart: { _ in nil })
     #expect(decision.activeSessions.count + decision.discounts.count <= collection.probes.count * 2)
 }

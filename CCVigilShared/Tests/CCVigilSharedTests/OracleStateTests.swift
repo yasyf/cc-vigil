@@ -25,6 +25,8 @@ private func decide(
     _ sessions: [SessionProbe],
     hints: [String: Int64] = [:],
     backgroundWork: [String: BackgroundWorkReport] = [:],
+    sessionPids: [String: TrackedPid] = [:],
+    processStart: (Int32) -> Int64? = { _ in nil },
     processesAlive: Bool = true,
     config: VigilConfig = .default
 ) -> BlockDecision {
@@ -32,9 +34,10 @@ private func decide(
         sessions: sessions,
         humanWaitHints: hints,
         backgroundWork: backgroundWork,
+        sessionPids: sessionPids,
         claudeProcessesAlive: processesAlive
     )
-    .decision(config: config, clock: clock)
+    .decision(config: config, clock: clock, processStart: processStart)
 }
 
 private func asyncPending(_ kind: PendingKind = .pendingAsyncWorkflow) -> PendingItem {
@@ -321,6 +324,111 @@ func oracleWaitingMaxAgeBackstopBoundary(ageSeconds: Int64, expectActive: Bool) 
         ],
         discounts: []
     ))
+}
+
+private enum PidMapping {
+    case mappedLive, mappedDead, unmapped
+}
+
+private func liveness(
+    _ mapping: PidMapping
+) -> (sessionPids: [String: TrackedPid], processStart: (Int32) -> Int64?) {
+    (
+        sessionPids: mapping == .unmapped
+            ? [:]
+            : ["/t/session.jsonl": TrackedPid(pid: 77, capturedAtEpoch: now - 1000)],
+        processStart: { _ in mapping == .mappedDead ? nil : now - 2000 }
+    )
+}
+
+/// The full per-session-liveness matrix: {mapped-live, mapped-dead, unmapped}
+/// × {fresh, stale (past the 12h cliff)} × {midTool, waitingTool pending}.
+/// Mapped + dead discounts outright — a dead process writes nothing, so a
+/// recent mtime cannot vouch for it and `.recentActivity` is suppressed.
+/// Mapped + live holds past the cliff. Unmapped keeps today's uniform cliff
+/// bit for bit — the unmapped rows pass a live-shaped `processStart` to prove
+/// the map's absence, not the closure, drives the verdict. Self-heal note: a
+/// --resume'd session briefly maps to its dead old pid until the next nudge
+/// remaps it (latest-wins) and reads as the mapped-dead rows for that window,
+/// bounded by one nudge interval; the global claudeProcessesAlive gate keeps
+/// the machine awake while any claude process lives.
+@Test(arguments: [
+    (PidMapping.mappedLive, false, true, [ActivityReason.recentActivity, .midTool], DiscountReason?.none),
+    (.mappedLive, false, false, [.recentActivity, .waiting], nil),
+    (.mappedLive, true, true, [.midTool], nil),
+    (.mappedLive, true, false, [.waiting], nil),
+    (.mappedDead, false, true, [], .sessionProcessDead),
+    (.mappedDead, false, false, [], .sessionProcessDead),
+    (.mappedDead, true, true, [], .sessionProcessDead),
+    (.mappedDead, true, false, [], .sessionProcessDead),
+    (.unmapped, false, true, [.recentActivity, .midTool], nil),
+    (.unmapped, false, false, [.recentActivity, .waiting], nil),
+    (.unmapped, true, true, [], .staleActivityMaxAge),
+    (.unmapped, true, false, [], .staleActivityMaxAge),
+])
+private func oraclePerSessionLivenessMatrix(
+    mapping: PidMapping,
+    stale: Bool,
+    midTool: Bool,
+    expectedReasons: [ActivityReason],
+    expectedDiscount: DiscountReason?
+) {
+    let epoch = now - (stale ? 90000 : 10)
+    let session = midTool
+        ? probe(midTool: true, lastEventEpoch: epoch)
+        : probe(
+            isWaiting: true,
+            lastEventEpoch: epoch,
+            pending: [PendingItem(toolUseID: "m1", name: "Monitor", kind: .waitingTool)]
+        )
+    let (sessionPids, processStart) = liveness(mapping)
+    let decision = decide([session], sessionPids: sessionPids, processStart: processStart)
+    #expect(decision == BlockDecision(
+        shouldBlock: !expectedReasons.isEmpty,
+        activeSessions: expectedReasons.isEmpty
+            ? []
+            : [ActiveSession(path: "/t/session.jsonl", reasons: expectedReasons)],
+        discounts: expectedDiscount.map { [SessionDiscount(path: "/t/session.jsonl", reason: $0)] } ?? []
+    ))
+}
+
+/// The pid-reuse defense at the capture boundary, floored to whole seconds on
+/// both sides: a start strictly after capture is a recycled pid (dead), the
+/// capture instant itself is ambiguous and resolves live — flooring can only
+/// turn a borderline reuse into live, the safe direction for a sleep
+/// inhibitor. A stale midTool probe makes the verdict visible: live holds
+/// past the cliff, dead discounts with `.sessionProcessDead`.
+@Test(arguments: [
+    (Int64?.none, false),
+    (Int64?(now - 999), false),
+    (Int64?(now - 1000), true),
+    (Int64?(now - 2000), true),
+])
+func oracleSessionPidReuseBoundary(startedEpoch: Int64?, expectLive: Bool) {
+    let decision = decide(
+        [probe(midTool: true, lastEventEpoch: now - 90000)],
+        sessionPids: ["/t/session.jsonl": TrackedPid(pid: 77, capturedAtEpoch: now - 1000)],
+        processStart: { pid in
+            #expect(pid == 77)
+            return startedEpoch
+        }
+    )
+    if expectLive {
+        #expect(decision.activeSessions == [ActiveSession(path: "/t/session.jsonl", reasons: [.midTool])])
+        #expect(decision.discounts.isEmpty)
+    } else {
+        #expect(decision.activeSessions.isEmpty)
+        #expect(decision.discounts == [SessionDiscount(path: "/t/session.jsonl", reason: .sessionProcessDead)])
+    }
+}
+
+@Test func oraclePidForOtherSessionLeavesThisOneUnmapped() {
+    let decision = decide(
+        [probe(midTool: true, lastEventEpoch: now - 90000)],
+        sessionPids: ["/t/other.jsonl": TrackedPid(pid: 77, capturedAtEpoch: now - 1000)],
+        processStart: { _ in nil }
+    )
+    #expect(decision.discounts == [SessionDiscount(path: "/t/session.jsonl", reason: .staleActivityMaxAge)])
 }
 
 @Test(arguments: [

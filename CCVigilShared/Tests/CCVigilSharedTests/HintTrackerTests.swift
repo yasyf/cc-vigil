@@ -53,8 +53,9 @@ private let oracleNow: Int64 = 1_800_000_000
             sessions: [probe],
             humanWaitHints: tracker.hints(forPaths: [path]),
             backgroundWork: [:],
+            sessionPids: [:],
             claudeProcessesAlive: true
-        ).decision(config: .default, clock: clock)
+        ).decision(config: .default, clock: clock, processStart: { _ in nil })
     }
     var tracker = HintTracker()
     tracker.apply(

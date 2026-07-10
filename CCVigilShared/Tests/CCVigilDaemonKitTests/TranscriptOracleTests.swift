@@ -20,8 +20,9 @@ import Testing
         sessions: collection.probes,
         humanWaitHints: [:],
         backgroundWork: [:],
+        sessionPids: [:],
         claudeProcessesAlive: true
-    ).decision(config: .default, clock: clock)
+    ).decision(config: .default, clock: clock, processStart: { _ in nil })
     #expect(decision == BlockDecision(
         shouldBlock: true,
         activeSessions: [
@@ -45,8 +46,9 @@ import Testing
         sessions: collection.probes,
         humanWaitHints: [:],
         backgroundWork: [:],
+        sessionPids: [:],
         claudeProcessesAlive: true
-    ).decision(config: .default, clock: clock)
+    ).decision(config: .default, clock: clock, processStart: { _ in nil })
     #expect(decision == BlockDecision(shouldBlock: false, activeSessions: [], discounts: []))
 }
 
@@ -63,8 +65,9 @@ import Testing
         sessions: collection.probes,
         humanWaitHints: [:],
         backgroundWork: [:],
+        sessionPids: [:],
         claudeProcessesAlive: true
-    ).decision(config: .default, clock: clock)
+    ).decision(config: .default, clock: clock, processStart: { _ in nil })
     #expect(decision == BlockDecision(
         shouldBlock: false,
         activeSessions: [],
@@ -89,8 +92,9 @@ import Testing
         sessions: collection.probes,
         humanWaitHints: tracker.hints(forPaths: collection.probes.map(\.sessionPath)),
         backgroundWork: [:],
+        sessionPids: [:],
         claudeProcessesAlive: true
-    ).decision(config: .default, clock: clock)
+    ).decision(config: .default, clock: clock, processStart: { _ in nil })
     #expect(decision == BlockDecision(
         shouldBlock: false,
         activeSessions: [],
@@ -206,8 +210,9 @@ import Testing
         sessions: cachedFailure.probes,
         humanWaitHints: [:],
         backgroundWork: [:],
+        sessionPids: [:],
         claudeProcessesAlive: true
-    ).decision(config: .default, clock: clock)
+    ).decision(config: .default, clock: clock, processStart: { _ in nil })
     #expect(decision == BlockDecision(
         shouldBlock: true,
         activeSessions: [ActiveSession(path: session.path, reasons: [.midTool])],
@@ -257,8 +262,9 @@ import Testing
         sessions: collection.probes,
         humanWaitHints: [:],
         backgroundWork: [:],
+        sessionPids: [:],
         claudeProcessesAlive: true
-    ).decision(config: .default, clock: clock)
+    ).decision(config: .default, clock: clock, processStart: { _ in nil })
     #expect(decision == BlockDecision(
         shouldBlock: true,
         activeSessions: [ActiveSession(path: poisoned.path, reasons: [.recentActivity])],
@@ -286,8 +292,9 @@ import Testing
         sessions: collection.probes,
         humanWaitHints: [:],
         backgroundWork: [:],
+        sessionPids: [:],
         claudeProcessesAlive: true
-    ).decision(config: .default, clock: clock)
+    ).decision(config: .default, clock: clock, processStart: { _ in nil })
     #expect(decision == BlockDecision(shouldBlock: false, activeSessions: [], discounts: []))
 }
 
@@ -332,8 +339,9 @@ import Testing
         sessions: collection.probes,
         humanWaitHints: [:],
         backgroundWork: [:],
+        sessionPids: [:],
         claudeProcessesAlive: true
-    ).decision(config: .default, clock: clock)
+    ).decision(config: .default, clock: clock, processStart: { _ in nil })
     #expect(decision == BlockDecision(
         shouldBlock: true,
         activeSessions: [ActiveSession(path: session.path, reasons: [.midTool])],

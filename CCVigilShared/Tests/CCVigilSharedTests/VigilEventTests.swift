@@ -22,6 +22,20 @@ private func json(_ record: EventRecord) throws -> String {
         + "\"event\":\"block-edge\",\"holds\":[]}")
 }
 
+@Test func blockEdgeEncodesSessionProcessDeadDiscountAdditively() throws {
+    let decision = BlockDecision(
+        shouldBlock: false,
+        activeSessions: [],
+        discounts: [SessionDiscount(path: "/t/dead.jsonl", reason: .sessionProcessDead)]
+    )
+    let record = EventRecord(at: at, event: .blockEdge(blocked: false, applied: false, decision: decision, holds: []))
+    #expect(try json(record) == "{\"applied\":false,\"at\":1767323047,\"blocked\":false,"
+        + "\"decision\":{\"activeSessions\":[],"
+        + "\"discounts\":[{\"path\":\"/t/dead.jsonl\",\"reason\":\"session-process-dead\"}],\"shouldBlock\":false},"
+        + "\"event\":\"block-edge\",\"holds\":[]}")
+    #expect(try WireCodec.decodePayload(EventRecord.self, from: WireCodec.encodePayload(record)) == record)
+}
+
 @Test func holdDrivenBlockEdgeSelfDescribesWithItsActiveHolds() throws {
     let decision = BlockDecision(shouldBlock: false, activeSessions: [], discounts: [])
     let hold = Hold(key: "ci", reason: "cargo build", ttlSeconds: 600, createdAt: at, pid: 4242)

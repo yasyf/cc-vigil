@@ -25,9 +25,10 @@ private func decide(
         sessions: sessions,
         humanWaitHints: hints,
         backgroundWork: backgroundWork,
+        sessionPids: [:],
         claudeProcessesAlive: true
     )
-    .decision(config: .default, clock: clock)
+    .decision(config: .default, clock: clock, processStart: { _ in nil })
 }
 
 /// H2: a Stop hook reported live background work, then the transcript went
