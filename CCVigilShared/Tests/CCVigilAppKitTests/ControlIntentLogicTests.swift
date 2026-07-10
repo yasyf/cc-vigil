@@ -19,16 +19,35 @@ private func report() -> StatusReport {
 }
 
 @Test(arguments: [
-    (60, 60),
-    (0, 1),
-    (-5, 1),
-    (86400, 86400),
-    (86401, 86400),
-    (1_000_000, 86400),
+    (Measurement<UnitDuration>(value: 60, unit: .seconds), ControlIntentLogic.RequestedSeconds.seconds(60)),
+    (Measurement<UnitDuration>(value: 5, unit: .minutes), .seconds(300)),
+    (Measurement<UnitDuration>(value: Double(Hold.maxTTLSeconds), unit: .seconds), .seconds(Hold.maxTTLSeconds)),
+    (Measurement<UnitDuration>(value: Double(Hold.maxTTLSeconds) + 1, unit: .seconds), .seconds(Hold.maxTTLSeconds)),
+    (Measurement<UnitDuration>(value: 1_000_000, unit: .seconds), .seconds(Hold.maxTTLSeconds)),
+    (Measurement<UnitDuration>(value: 1e300, unit: .seconds), .seconds(Hold.maxTTLSeconds)),
+    (Measurement<UnitDuration>(value: .infinity, unit: .seconds), .seconds(Hold.maxTTLSeconds)),
 ])
-func clampsRequestedDurationToTheHoldCeiling(requested: Int, expected: Int) {
-    #expect(ControlIntentLogic.clampedSeconds(requested) == expected)
-    #expect(expected <= Hold.maxTTLSeconds)
+func requestedSecondsClampsToTheHoldCeiling(
+    duration: Measurement<UnitDuration>,
+    expected: ControlIntentLogic.RequestedSeconds
+) {
+    #expect(ControlIntentLogic.requestedSeconds(from: duration, default: 3600) == expected)
+}
+
+@Test(arguments: [
+    Measurement<UnitDuration>(value: 0, unit: .seconds),
+    Measurement<UnitDuration>(value: -5, unit: .seconds),
+    Measurement<UnitDuration>(value: -30, unit: .minutes),
+])
+func requestedSecondsRejectsNonPositiveDurations(duration: Measurement<UnitDuration>) {
+    #expect(
+        ControlIntentLogic.requestedSeconds(from: duration, default: 3600)
+            == .invalid(ControlIntentLogic.nonPositiveDurationDialog)
+    )
+}
+
+@Test func requestedSecondsUsesTheFallbackWhenNoDurationIsGiven() {
+    #expect(ControlIntentLogic.requestedSeconds(from: nil, default: 3600) == .seconds(3600))
 }
 
 @Test(arguments: [

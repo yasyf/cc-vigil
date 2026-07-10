@@ -15,11 +15,6 @@ private func daemonCommands() -> DaemonCommands {
     DaemonCommands(socketPath: SupportPaths(directory: SupportPaths.defaultDirectory).socketPath)
 }
 
-private func requestedSeconds(_ duration: Measurement<UnitDuration>?, default fallback: Int) -> Int {
-    guard let duration else { return fallback }
-    return ControlIntentLogic.clampedSeconds(Int(duration.converted(to: .seconds).value.rounded()))
-}
-
 struct HoldAwakeIntent: AppIntent {
     static let title: LocalizedStringResource = "Hold cc-vigil Awake"
     static let description = IntentDescription("Keep the Mac awake for a fixed duration, no oracle required.")
@@ -28,8 +23,12 @@ struct HoldAwakeIntent: AppIntent {
     var duration: Measurement<UnitDuration>?
 
     func perform() async throws -> some IntentResult & ProvidesDialog {
-        let ttlSeconds = requestedSeconds(duration, default: ControlIntentLogic.defaultHoldSeconds)
-        let dialog = await ControlIntentLogic.runHold(ttlSeconds: ttlSeconds, send: daemonCommands().roundTrip)
+        let dialog: String = switch ControlIntentLogic.requestedSeconds(from: duration, default: ControlIntentLogic.defaultHoldSeconds) {
+        case let .seconds(ttlSeconds):
+            await ControlIntentLogic.runHold(ttlSeconds: ttlSeconds, send: daemonCommands().roundTrip)
+        case let .invalid(message):
+            message
+        }
         return .result(dialog: IntentDialog(stringLiteral: dialog))
     }
 }
@@ -52,8 +51,12 @@ struct PauseVigilIntent: AppIntent {
     var duration: Measurement<UnitDuration>?
 
     func perform() async throws -> some IntentResult & ProvidesDialog {
-        let seconds = requestedSeconds(duration, default: ControlIntentLogic.defaultPauseSeconds)
-        let dialog = await ControlIntentLogic.runPause(seconds: seconds, send: daemonCommands().roundTrip)
+        let dialog: String = switch ControlIntentLogic.requestedSeconds(from: duration, default: ControlIntentLogic.defaultPauseSeconds) {
+        case let .seconds(seconds):
+            await ControlIntentLogic.runPause(seconds: seconds, send: daemonCommands().roundTrip)
+        case let .invalid(message):
+            message
+        }
         return .result(dialog: IntentDialog(stringLiteral: dialog))
     }
 }

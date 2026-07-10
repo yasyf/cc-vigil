@@ -20,13 +20,35 @@ public enum ControlIntentLogic {
     /// the menu's "Pause for 1 Hour".
     public static let defaultPauseSeconds = 3600
 
+    /// Dialog for a non-positive requested duration. The App Intents surface has
+    /// no duration string to echo, so it states the rule plainly, mirroring the
+    /// CLI's `DurationParseError.nonPositive`.
+    public static let nonPositiveDurationDialog = "The duration must be positive."
+
     public typealias Send = (WireRequest) async throws -> WireResponse
 
-    /// Clamp a requested duration to the shared Hold ceiling, mirroring
-    /// PauseCommands' `min(..., Hold.maxTTLSeconds)`; a non-positive request
-    /// floors to one second.
-    public static func clampedSeconds(_ requested: Int) -> Int {
-        min(max(requested, 1), Hold.maxTTLSeconds)
+    /// A Shortcuts duration shaped to the daemon's Int seconds, or an invalid
+    /// input whose `dialog` the intent surfaces instead of holding.
+    public enum RequestedSeconds: Equatable, Sendable {
+        case seconds(Int)
+        case invalid(String)
+    }
+
+    /// Shape a Shortcuts duration to the daemon's Int seconds. A huge or
+    /// non-finite value clamps to `Hold.maxTTLSeconds` in Double space, before
+    /// the `Int(_:)` conversion that would otherwise trap; a missing duration
+    /// uses `fallback`; a non-positive duration is invalid input.
+    public static func requestedSeconds(
+        from duration: Measurement<UnitDuration>?,
+        default fallback: Int
+    ) -> RequestedSeconds {
+        guard let duration else { return .seconds(fallback) }
+        let value = duration.converted(to: .seconds).value
+        guard value.isFinite, value <= Double(Hold.maxTTLSeconds) else {
+            return .seconds(Hold.maxTTLSeconds)
+        }
+        guard value > 0 else { return .invalid(nonPositiveDurationDialog) }
+        return .seconds(Int(value.rounded()))
     }
 
     public static func holdDialog(ttlSeconds: Int) -> String {
