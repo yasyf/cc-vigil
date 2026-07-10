@@ -28,80 +28,93 @@ public struct SleepNotification: Equatable, Sendable {
     }
 }
 
-/// Detects the two user-facing edges in the daemon's status stream — the block
-/// releasing because agents finished, and a cutout latching mid-block — and
-/// builds their notification content. State-tracking only; the App layer posts.
-///
-/// Known limits: edges that both begin and resolve inside an XPC disconnect gap
-/// can misfire or go unseen — the snapshot stream cannot reconstruct causality
-/// across the gap, and a clean fix needs daemon-side alert telemetry. The
-/// daemon's events.log remains the ground truth; the away summary surfaces
-/// anything these toasts miss.
-///
-/// Residual (superseded daemon-side by SleepAlertComposer, which now mints these
-/// edges from the daemon's unbroken stream onto the StatusReport alert ring):
-/// only alerts older than that ring still fall through to the away summary.
-public struct SleepNotifier: Equatable, Sendable {
-    private var previous: StatusReport?
-    private var lastBlocking: StatusReport?
-    private var alertedCutouts: Set<CutoutKind> = []
+/// Persists the id of the newest daemon alert the App has already decided about.
+/// It is the App's whole memory of the alert stream — surviving XPC reconnects
+/// and app restarts — so replay is exactly-once. The concrete store keeps it in
+/// UserDefaults; tests supply an in-memory double.
+public protocol AlertWatermarkStore: AnyObject, Sendable {
+    var lastSeenAlertId: Int64? { get }
+    func recordSeen(_ id: Int64)
+}
 
-    public init() {}
+/// UserDefaults-backed watermark, matching how the App layer persists its other
+/// preferences (a string key on the standard suite). Absence is the first-run
+/// signal, so the key is read through `object(forKey:)` rather than the
+/// zero-defaulting `integer(forKey:)`.
+public final class UserDefaultsAlertWatermarkStore: AlertWatermarkStore, @unchecked Sendable {
+    private static let key = "lastSeenSleepAlertId"
+    private let defaults: UserDefaults
 
-    public mutating func detect(
+    public init(defaults: UserDefaults = .standard) {
+        self.defaults = defaults
+    }
+
+    public var lastSeenAlertId: Int64? {
+        guard defaults.object(forKey: Self.key) != nil else { return nil }
+        return Int64(defaults.integer(forKey: Self.key))
+    }
+
+    public func recordSeen(_ id: Int64) {
+        defaults.set(Int(id), forKey: Self.key)
+    }
+}
+
+/// Replays the daemon's composed sleep-alert stream into user-facing toasts,
+/// exactly once each. The daemon's SleepAlertComposer mints every release and
+/// cutout edge from its own unbroken status stream and rides the recent-alert
+/// ring on each StatusReport; this consumer posts the alerts newer than its
+/// persisted watermark, in id order, then advances the watermark. Duplicate
+/// pushes, an XPC reconnect that re-delivers the same ring, and an app restart
+/// therefore replay nothing already seen, and a report whose ring the daemon
+/// encoded as `nil` (an old daemon during upgrade skew) leaves the watermark
+/// untouched. The toast copy and NotificationSettings gating are the App's job,
+/// applied here at post time keyed off each alert's kind.
+///
+/// One residual: alerts older than the daemon's ring cap age out of the ring
+/// before the App can see them; the away summary remains the ground truth that
+/// surfaces those.
+public struct SleepNotifier {
+    private let store: any AlertWatermarkStore
+
+    public init(store: any AlertWatermarkStore) {
+        self.store = store
+    }
+
+    public func consume(
         _ event: StatusViewModel.Event,
-        settings: NotificationSettings,
-        now: Date
+        settings: NotificationSettings
     ) -> [SleepNotification] {
-        switch event {
-        case .disconnected:
-            previous = nil
+        guard case let .statusUpdated(report) = event, let alerts = report.alerts else { return [] }
+        let newest = alerts.map(\.id).max()
+        guard let watermark = store.lastSeenAlertId else {
+            // First run: adopt the ring's newest id as the baseline rather than
+            // replaying the whole ring as a burst of toasts.
+            newest.map(store.recordSeen)
             return []
-        case let .statusUpdated(report):
-            defer {
-                if report.shouldBlock {
-                    lastBlocking = report
-                } else if report.isFullyIdle {
-                    lastBlocking = nil
-                }
-                previous = report
-                alertedCutouts.formIntersection(report.latchedCutouts)
-            }
-            var notifications: [SleepNotification] = []
-            if settings.notifyOnCutout {
-                let firing = report.latchedCutouts.filter { !alertedCutouts.contains($0) }
-                if !firing.isEmpty, cutoutInterruptedWork(report) {
-                    alertedCutouts.formUnion(firing)
-                    notifications.append(Self.cutoutLatched(firing))
-                }
-            }
-            if settings.notifyOnRelease,
-               let previous,
-               previous.blockApplied,
-               !report.blockApplied,
-               !report.shouldBlock,
-               report.pausedUntil == nil,
-               report.latchedCutouts.isEmpty,
-               report.activeSessions.isEmpty,
-               report.holds.isEmpty,
-               let lastBlocking
-            {
-                notifications.append(Self.released(lastBlocking, now: now))
-            }
-            return notifications
+        }
+        let fresh = alerts.filter { $0.id > watermark }.sorted { $0.id < $1.id }
+        newest.map(store.recordSeen)
+        return fresh.compactMap { Self.notification(for: $0, settings: settings) }
+    }
+
+    private static func notification(
+        for alert: SleepAlert,
+        settings: NotificationSettings
+    ) -> SleepNotification? {
+        switch alert.payload {
+        case let .released(sessions, holds):
+            guard settings.notifyOnRelease else { return nil }
+            return released(sessions: sessions, holds: holds, atEpoch: alert.atEpoch)
+        case let .cutoutLatched(kinds):
+            guard settings.notifyOnCutout else { return nil }
+            return cutoutLatched(kinds)
         }
     }
 
-    private func cutoutInterruptedWork(_ report: StatusReport) -> Bool {
-        if let previous {
-            return previous.shouldBlock
-        }
-        return report.hasActiveWork || lastBlocking != nil
-    }
-
-    private static func released(_ blocking: StatusReport, now: Date) -> SleepNotification {
-        let summary = holdingSummary(sessions: blocking.activeSessions.count, holds: blocking.holds.count)
-        let time = now.formatted(date: .omitted, time: .shortened)
+    private static func released(sessions: Int, holds: Int, atEpoch: Int64) -> SleepNotification {
+        let summary = holdingSummary(sessions: sessions, holds: holds)
+        let time = Date(timeIntervalSince1970: TimeInterval(atEpoch))
+            .formatted(date: .omitted, time: .shortened)
         return SleepNotification(
             kind: .released,
             title: "Agents finished",
@@ -130,16 +143,5 @@ public struct SleepNotifier: Equatable, Sendable {
             parts.append(holds == 1 ? "1 hold" : "\(holds) holds")
         }
         return parts.joined(separator: " and ")
-    }
-}
-
-private extension StatusReport {
-    var isFullyIdle: Bool {
-        !shouldBlock && !blockApplied
-            && activeSessions.isEmpty && holds.isEmpty && latchedCutouts.isEmpty
-    }
-
-    var hasActiveWork: Bool {
-        !activeSessions.isEmpty || !holds.isEmpty
     }
 }

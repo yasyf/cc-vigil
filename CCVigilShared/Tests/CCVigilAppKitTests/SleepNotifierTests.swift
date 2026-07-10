@@ -4,150 +4,155 @@ import Foundation
 import Testing
 
 private let now = Date(timeIntervalSince1970: 1_767_000_000)
+private let atEpoch = Int64(now.timeIntervalSince1970)
 private let releasedAt = now.formatted(date: .omitted, time: .shortened)
 
 private extension NotificationSettings {
     static let both = NotificationSettings(notifyOnRelease: true, notifyOnCutout: true)
 }
 
-private func report(
-    shouldBlock: Bool = false,
-    blockApplied: Bool = false,
-    activeSessions: [ActiveSession] = [],
-    holds: [Hold] = [],
-    latchedCutouts: [CutoutKind] = [],
-    pausedUntil: Date? = nil
-) -> StatusReport {
-    StatusReport(
-        shouldBlock: shouldBlock,
-        blockApplied: blockApplied,
-        helper: .reachable,
-        activeSessions: activeSessions,
-        holds: holds,
-        latchedCutouts: latchedCutouts,
-        pausedUntil: pausedUntil
-    )
-}
+private final class FakeWatermarkStore: AlertWatermarkStore, @unchecked Sendable {
+    private(set) var lastSeenAlertId: Int64?
 
-private let session = ActiveSession(
-    path: "/Users/ada/.claude/projects/-Users-ada-Code-cc-vigil/0195aabb-1111-2222-3333-444455556666.jsonl",
-    reasons: [.recentActivity, .midTool]
-)
+    init(lastSeenAlertId: Int64? = nil) {
+        self.lastSeenAlertId = lastSeenAlertId
+    }
 
-private let hold = Hold(
-    key: "app-12ab34cd",
-    reason: "menu hold",
-    ttlSeconds: 1800,
-    createdAt: now,
-    pid: nil
-)
-
-private func notifications(
-    _ reports: [StatusReport?],
-    settings: NotificationSettings = .both
-) -> [[SleepNotification]] {
-    var notifier = SleepNotifier()
-    return reports.map { report in
-        let event: StatusViewModel.Event = report.map { .statusUpdated($0) } ?? .disconnected
-        return notifier.detect(event, settings: settings, now: now)
+    func recordSeen(_ id: Int64) {
+        lastSeenAlertId = id
     }
 }
 
-@Test func firstReportNeverFires() {
-    #expect(notifications([report()]) == [[]])
-    #expect(notifications([report(shouldBlock: true, blockApplied: true)]) == [[]])
+private func released(id: Int64, sessions: Int, holds: Int) -> SleepAlert {
+    SleepAlert(id: id, atEpoch: atEpoch, payload: .released(sessions: sessions, holds: holds))
 }
 
-@Test func releaseFiresOnceWhenAgentsFinish() {
-    let results = notifications([
-        report(shouldBlock: true, blockApplied: true, activeSessions: [session], holds: [hold]),
-        report(),
-        report(),
-    ])
-    #expect(results == [
-        [],
-        [SleepNotification(
-            kind: .released,
-            title: "Agents finished",
-            body: "The Mac may sleep now — 1 active session and 1 hold finished at \(releasedAt)."
-        )],
-        [],
-    ])
+private func cutout(id: Int64, _ kinds: [CutoutKind]) -> SleepAlert {
+    SleepAlert(id: id, atEpoch: atEpoch, payload: .cutoutLatched(kinds: kinds))
 }
 
-@Test func releaseNamesTheLastBlockingSnapshotAcrossAnAppliedIntermediate() {
-    let results = notifications([
-        report(shouldBlock: true, blockApplied: true, activeSessions: [session, session], holds: [hold]),
-        report(shouldBlock: false, blockApplied: true),
-        report(),
-    ])
-    #expect(results[2] == [SleepNotification(
+/// The daemon rides the recent-alert ring on every StatusReport, and encodes an
+/// empty ring as `nil` alerts; these helpers mirror that wire shape exactly.
+private func report(alerts: [SleepAlert]?) -> StatusReport {
+    StatusReport(
+        shouldBlock: false,
+        blockApplied: false,
+        helper: .reachable,
+        activeSessions: [],
+        holds: [],
+        latchedCutouts: [],
+        pausedUntil: nil,
+        alerts: alerts
+    )
+}
+
+private func consume(
+    _ reports: [StatusReport],
+    store: FakeWatermarkStore,
+    settings: NotificationSettings = .both
+) -> [[SleepNotification]] {
+    let notifier = SleepNotifier(store: store)
+    return reports.map { notifier.consume(.statusUpdated($0), settings: settings) }
+}
+
+private let releasedToast = SleepNotification(
+    kind: .released,
+    title: "Agents finished",
+    body: "The Mac may sleep now — 1 active session and 1 hold finished at \(releasedAt)."
+)
+
+private let cutoutToast = SleepNotification(
+    kind: .cutoutLatched,
+    title: "Sleep protection dropped",
+    body: "Battery cutout latched — the Mac may sleep despite active agents."
+)
+
+/// First-run choice: a fresh install must NOT replay the daemon's whole recent
+/// ring as a burst of toasts. With no stored watermark, the consumer adopts the
+/// newest id in its first report as the baseline and posts nothing; only alerts
+/// minted after that baseline surface.
+@Test func firstRunAdoptsNewestAlertWithoutReplayingTheRing() {
+    let store = FakeWatermarkStore()
+    let ring = [
+        released(id: 1, sessions: 1, holds: 1),
+        cutout(id: 2, [.battery]),
+        released(id: 3, sessions: 2, holds: 0),
+    ]
+    let results = consume([report(alerts: ring)], store: store)
+    #expect(results == [[]])
+    #expect(store.lastSeenAlertId == 3)
+}
+
+@Test func firstRunSkipsHistoryThenPostsOnlyAlertsNewerThanTheBaseline() {
+    let store = FakeWatermarkStore()
+    let base = [released(id: 1, sessions: 1, holds: 1)]
+    let grown = base + [released(id: 2, sessions: 1, holds: 1)]
+    let results = consume([report(alerts: base), report(alerts: grown)], store: store)
+    #expect(results == [[], [releasedToast]])
+    #expect(store.lastSeenAlertId == 2)
+}
+
+@Test func duplicatePushDeliversEachAlertExactlyOnce() {
+    let store = FakeWatermarkStore()
+    let base = [released(id: 1, sessions: 1, holds: 1)]
+    let grown = base + [cutout(id: 2, [.battery])]
+    let results = consume(
+        [report(alerts: base), report(alerts: grown), report(alerts: grown)],
+        store: store
+    )
+    #expect(results == [[], [cutoutToast], []])
+    #expect(store.lastSeenAlertId == 2)
+}
+
+@Test func reconnectReDeliversTheRingWithoutRePosting() {
+    let store = FakeWatermarkStore()
+    let base = [released(id: 1, sessions: 1, holds: 1)]
+    let grown = base + [cutout(id: 2, [.battery])]
+    let notifier = SleepNotifier(store: store)
+    _ = notifier.consume(.statusUpdated(report(alerts: base)), settings: .both)
+    let posted = notifier.consume(.statusUpdated(report(alerts: grown)), settings: .both)
+    let afterDrop = notifier.consume(.disconnected, settings: .both)
+    let afterReconnect = notifier.consume(.statusUpdated(report(alerts: grown)), settings: .both)
+    #expect(posted == [cutoutToast])
+    #expect(afterDrop == [])
+    #expect(afterReconnect == [])
+    #expect(store.lastSeenAlertId == 2)
+}
+
+@Test func appRestartResumesFromPersistedWatermark() {
+    let store = FakeWatermarkStore()
+    let ring = [released(id: 1, sessions: 1, holds: 1), cutout(id: 2, [.battery])]
+    _ = SleepNotifier(store: store).consume(.statusUpdated(report(alerts: ring)), settings: .both)
+    #expect(store.lastSeenAlertId == 2)
+    let afterRestart = SleepNotifier(store: store)
+        .consume(.statusUpdated(report(alerts: ring)), settings: .both)
+    #expect(afterRestart == [])
+    #expect(store.lastSeenAlertId == 2)
+}
+
+@Test func postsFreshAlertsSortedByIdRegardlessOfArrayOrder() {
+    let store = FakeWatermarkStore()
+    let base = [released(id: 1, sessions: 1, holds: 1)]
+    let grown = [
+        released(id: 3, sessions: 2, holds: 0),
+        released(id: 1, sessions: 1, holds: 1),
+        cutout(id: 2, [.battery]),
+    ]
+    let results = consume([report(alerts: base), report(alerts: grown)], store: store)
+    let releasedTwoSessions = SleepNotification(
         kind: .released,
         title: "Agents finished",
-        body: "The Mac may sleep now — 2 active sessions and 1 hold finished at \(releasedAt)."
-    )])
-    #expect(results[1] == [])
+        body: "The Mac may sleep now — 2 active sessions finished at \(releasedAt)."
+    )
+    #expect(results == [[], [cutoutToast, releasedTwoSessions]])
+    #expect(store.lastSeenAlertId == 3)
 }
 
-@Test(arguments: [
-    ([session], [hold], "1 active session and 1 hold"),
-    ([session, session], [Hold](), "2 active sessions"),
-    ([ActiveSession](), [hold, hold], "2 holds"),
-])
-func releaseBodyCountsWhatHadBeenHolding(
-    sessions: [ActiveSession],
-    holds: [Hold],
-    summary: String
-) {
-    let results = notifications([
-        report(shouldBlock: true, blockApplied: true, activeSessions: sessions, holds: holds),
-        report(),
-    ])
-    #expect(results[1] == [SleepNotification(
-        kind: .released,
-        title: "Agents finished",
-        body: "The Mac may sleep now — \(summary) finished at \(releasedAt)."
-    )])
-}
-
-@Test func pauseDoesNotFireRelease() {
-    let results = notifications([
-        report(shouldBlock: true, blockApplied: true, activeSessions: [session]),
-        report(pausedUntil: now.addingTimeInterval(3600)),
-    ])
-    #expect(results == [[], []])
-}
-
-@Test func helperCrashWithWorkStillPendingDoesNotFireRelease() {
-    let results = notifications([
-        report(shouldBlock: true, blockApplied: true, activeSessions: [session]),
-        report(shouldBlock: true, blockApplied: false, activeSessions: [session]),
-    ])
-    #expect(results == [[], []])
-}
-
-@Test func cutoutLatchFiresMidBlockAndSuppressesRelease() {
-    let results = notifications([
-        report(shouldBlock: true, blockApplied: true, activeSessions: [session]),
-        report(shouldBlock: false, blockApplied: false, activeSessions: [session], latchedCutouts: [.battery]),
-        report(shouldBlock: false, blockApplied: false, activeSessions: [session], latchedCutouts: [.battery]),
-    ])
-    #expect(results == [
-        [],
-        [SleepNotification(
-            kind: .cutoutLatched,
-            title: "Sleep protection dropped",
-            body: "Battery cutout latched — the Mac may sleep despite active agents."
-        )],
-        [],
-    ])
-}
-
-@Test func cutoutLatchNamesEveryNewlyLatchedKind() {
-    let results = notifications([
-        report(shouldBlock: true, blockApplied: true, activeSessions: [session]),
-        report(shouldBlock: false, blockApplied: false, latchedCutouts: [.thermal, .battery]),
-    ])
+@Test func cutoutBodyNamesEveryLatchedKind() {
+    let store = FakeWatermarkStore()
+    let base = [released(id: 1, sessions: 1, holds: 1)]
+    let grown = base + [cutout(id: 2, [.thermal, .battery])]
+    let results = consume([report(alerts: base), report(alerts: grown)], store: store)
     #expect(results[1] == [SleepNotification(
         kind: .cutoutLatched,
         title: "Sleep protection dropped",
@@ -155,124 +160,50 @@ func releaseBodyCountsWhatHadBeenHolding(
     )])
 }
 
-@Test func cutoutLatchWhileIdleDoesNotFire() {
-    let results = notifications([
-        report(),
-        report(latchedCutouts: [.battery]),
-    ])
-    #expect(results == [[], []])
-}
-
-@Test func releaseToggleSuppressesTheReleaseEdge() {
-    let results = notifications(
-        [
-            report(shouldBlock: true, blockApplied: true, activeSessions: [session]),
-            report(),
-        ],
+@Test func releaseToggleOffSuppressesReleaseButStillAdvancesWatermark() {
+    let store = FakeWatermarkStore()
+    let base = [cutout(id: 1, [.battery])]
+    let grown = base + [released(id: 2, sessions: 1, holds: 1)]
+    let results = consume(
+        [report(alerts: base), report(alerts: grown)],
+        store: store,
         settings: NotificationSettings(notifyOnRelease: false, notifyOnCutout: true)
     )
     #expect(results == [[], []])
+    #expect(store.lastSeenAlertId == 2)
 }
 
-@Test func cutoutToggleSuppressesTheCutoutEdge() {
-    let results = notifications(
-        [
-            report(shouldBlock: true, blockApplied: true, activeSessions: [session]),
-            report(shouldBlock: false, blockApplied: false, latchedCutouts: [.battery]),
-        ],
+@Test func gatingPostsOnlyEnabledKindsWithinASingleReport() {
+    let store = FakeWatermarkStore()
+    let base = [released(id: 1, sessions: 1, holds: 1)]
+    let grown = base + [
+        released(id: 2, sessions: 1, holds: 1),
+        cutout(id: 3, [.battery]),
+    ]
+    let results = consume(
+        [report(alerts: base), report(alerts: grown)],
+        store: store,
         settings: NotificationSettings(notifyOnRelease: true, notifyOnCutout: false)
     )
-    #expect(results == [[], []])
+    #expect(results == [[], [releasedToast]])
+    #expect(store.lastSeenAlertId == 3)
 }
 
-@Test func disconnectResetsSoAReconnectedIdleReportDoesNotFire() {
-    let results = notifications([
-        report(shouldBlock: true, blockApplied: true, activeSessions: [session]),
-        nil,
-        report(),
-    ])
-    #expect(results == [[], [], []])
+@Test func nilAlertsReportPostsNothingAndLeavesTheWatermark() {
+    let store = FakeWatermarkStore()
+    let ring = [released(id: 1, sessions: 1, holds: 1), cutout(id: 2, [.battery])]
+    _ = SleepNotifier(store: store).consume(.statusUpdated(report(alerts: ring)), settings: .both)
+    #expect(store.lastSeenAlertId == 2)
+    let notifier = SleepNotifier(store: store)
+    #expect(notifier.consume(.statusUpdated(report(alerts: nil)), settings: .both) == [])
+    #expect(store.lastSeenAlertId == 2)
+    #expect(notifier.consume(.statusUpdated(report(alerts: ring)), settings: .both) == [])
+    #expect(store.lastSeenAlertId == 2)
 }
 
-@Test func cutoutSuppressedBlockSettlingDoesNotFireRelease() {
-    let results = notifications([
-        report(shouldBlock: true, blockApplied: true, activeSessions: [session]),
-        report(shouldBlock: false, blockApplied: true, activeSessions: [session], latchedCutouts: [.battery]),
-        report(shouldBlock: false, blockApplied: false, activeSessions: [session], latchedCutouts: [.battery]),
-    ])
-    #expect(results == [
-        [],
-        [SleepNotification(
-            kind: .cutoutLatched,
-            title: "Sleep protection dropped",
-            body: "Battery cutout latched — the Mac may sleep despite active agents."
-        )],
-        [],
-    ])
-}
-
-@Test func cutoutLatchedWhileDisconnectedFiresOnReconnect() {
-    let results = notifications([
-        report(shouldBlock: true, blockApplied: true, activeSessions: [session]),
-        nil,
-        report(shouldBlock: false, blockApplied: false, activeSessions: [session], latchedCutouts: [.battery]),
-        report(shouldBlock: false, blockApplied: false, activeSessions: [session], latchedCutouts: [.battery]),
-    ])
-    #expect(results == [
-        [],
-        [],
-        [SleepNotification(
-            kind: .cutoutLatched,
-            title: "Sleep protection dropped",
-            body: "Battery cutout latched — the Mac may sleep despite active agents."
-        )],
-        [],
-    ])
-}
-
-@Test func idleThenReconnectWithLatchedCutoutDoesNotFireFromStaleHistory() {
-    let results = notifications(
-        [
-            report(shouldBlock: true, blockApplied: true, activeSessions: [session]),
-            report(),
-            nil,
-            report(latchedCutouts: [.battery]),
-        ],
-        settings: NotificationSettings(notifyOnRelease: false, notifyOnCutout: true)
-    )
-    #expect(results == [[], [], [], []])
-}
-
-@Test func settlingFirstSnapshotOnReconnectFiresCutoutExactlyOnce() {
-    let results = notifications([
-        report(shouldBlock: true, blockApplied: true, activeSessions: [session]),
-        nil,
-        report(shouldBlock: false, blockApplied: true, activeSessions: [session], latchedCutouts: [.battery]),
-        report(shouldBlock: false, blockApplied: false, activeSessions: [session], latchedCutouts: [.battery]),
-    ])
-    #expect(results == [
-        [],
-        [],
-        [SleepNotification(
-            kind: .cutoutLatched,
-            title: "Sleep protection dropped",
-            body: "Battery cutout latched — the Mac may sleep despite active agents."
-        )],
-        [],
-    ])
-}
-
-@Test(arguments: [
-    ([session], [Hold]()),
-    ([ActiveSession](), [hold]),
-])
-func releaseSuppressedIndependentlyByLingeringSessionsOrHolds(
-    sessions: [ActiveSession],
-    holds: [Hold]
-) {
-    let results = notifications([
-        report(shouldBlock: true, blockApplied: true, activeSessions: [session], holds: [hold]),
-        report(shouldBlock: false, blockApplied: false, activeSessions: sessions, holds: holds),
-    ])
-    #expect(results == [[], []])
+@Test func nilAlertsBeforeAnyWatermarkStaysUninitialised() {
+    let store = FakeWatermarkStore()
+    let result = consume([report(alerts: nil)], store: store)
+    #expect(result == [[]])
+    #expect(store.lastSeenAlertId == nil)
 }

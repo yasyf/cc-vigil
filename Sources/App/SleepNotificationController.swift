@@ -17,7 +17,7 @@ final class SleepNotificationController: NSObject, UNUserNotificationCenterDeleg
     }
 
     private let center = UNUserNotificationCenter.current()
-    private var notifier = SleepNotifier()
+    private let notifier = SleepNotifier(store: UserDefaultsAlertWatermarkStore())
     private var authorization = Authorization.unknown
 
     override init() {
@@ -37,7 +37,7 @@ final class SleepNotificationController: NSObject, UNUserNotificationCenterDeleg
     }
 
     func handle(_ event: StatusViewModel.Event, settings: NotificationSettings) {
-        let pending = notifier.detect(event, settings: settings, now: Date())
+        let pending = notifier.consume(event, settings: settings)
         guard !pending.isEmpty else { return }
         Task { await deliver(pending) }
     }
