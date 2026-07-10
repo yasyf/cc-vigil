@@ -96,3 +96,26 @@ func livenessMatrix(label: String, processStartEpoch: Int64?, expectLive: Bool) 
     let live = tracker.liveSessionIDs { starts[$0] }
     #expect(live == ["live"])
 }
+
+/// Eviction reclaims entries the map would otherwise hold forever: a session
+/// whose process is no longer live (a vanished pid or a recycled ghost) and whose
+/// capture predates the discovery window can never pin a transcript again, so it
+/// is dropped and reverts to unmapped cliff behavior. A live session is kept
+/// regardless of age — its long-running process is exactly what the pin protects
+/// — and a recently-captured entry is kept even when dead, so a just-ended
+/// session is not evicted before the window would have dropped its transcript.
+@Test func pruneEvictsNonLiveEntriesOlderThanCutoffButKeepsLiveAndRecent() {
+    var tracker = SessionPidTracker()
+    tracker.apply(nudge("dead-old", claudePid: 10), now: Date(timeIntervalSince1970: 1000))
+    tracker.apply(nudge("live-old", claudePid: 20), now: Date(timeIntervalSince1970: 1000))
+    tracker.apply(nudge("ghost-old", claudePid: 30), now: Date(timeIntervalSince1970: 1000))
+    tracker.apply(nudge("dead-recent", claudePid: 40), now: Date(timeIntervalSince1970: 9000))
+
+    let starts: [Int32: Int64] = [20: 500, 30: 5000]
+    tracker.prune(capturedBefore: 5000) { starts[$0] }
+
+    #expect(tracker.pidsBySessionID == [
+        "live-old": TrackedPid(pid: 20, capturedAtEpoch: 1000),
+        "dead-recent": TrackedPid(pid: 40, capturedAtEpoch: 9000),
+    ])
+}

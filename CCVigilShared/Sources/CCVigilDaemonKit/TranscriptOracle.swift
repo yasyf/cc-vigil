@@ -37,11 +37,16 @@ public final class TranscriptOracle {
         scanner = TranscriptScanner(roots: scanner.roots + [root])
     }
 
-    public func collect(config: VigilConfig, clock: some WallClock) -> OracleCollection {
+    public func collect(
+        config: VigilConfig,
+        clock: some WallClock,
+        pinnedSessionIDs: Set<String>
+    ) -> OracleCollection {
         let selected = TranscriptDiscoveryPolicy.select(
             entries: scanner.entries(),
             config: config,
-            now: clock.now
+            now: clock.now,
+            pinnedSessionIDs: pinnedSessionIDs
         )
         cache.retain(paths: Set(selected.map(\.path)))
         var probes: [SessionProbe] = []

@@ -12,7 +12,7 @@ import Testing
 
     let oracle = TranscriptOracle(roots: [transcripts.root])
     let clock = FixedClock(epoch: fixtureLastEventEpoch + 60)
-    let collection = oracle.collect(config: .default, clock: clock)
+    let collection = oracle.collect(config: .default, clock: clock, pinnedSessionIDs: [])
     #expect(collection.newFailures == [])
     #expect(collection.probes.count == 3)
 
@@ -41,7 +41,7 @@ import Testing
 
     let oracle = TranscriptOracle(roots: [transcripts.root])
     let clock = FixedClock(epoch: fixtureLastEventEpoch + 301)
-    let collection = oracle.collect(config: .default, clock: clock)
+    let collection = oracle.collect(config: .default, clock: clock, pinnedSessionIDs: [])
     let decision = OracleState(
         sessions: collection.probes,
         humanWaitHints: [:],
@@ -59,7 +59,7 @@ import Testing
 
     let oracle = TranscriptOracle(roots: [transcripts.root])
     let clock = FixedClock(epoch: fixtureLastEventEpoch + 45000)
-    let collection = oracle.collect(config: .default, clock: clock)
+    let collection = oracle.collect(config: .default, clock: clock, pinnedSessionIDs: [])
     #expect(collection.probes.count == 1)
     let decision = OracleState(
         sessions: collection.probes,
@@ -82,7 +82,7 @@ import Testing
 
     let oracle = TranscriptOracle(roots: [transcripts.root])
     let clock = FixedClock(epoch: fixtureLastEventEpoch + 60)
-    let collection = oracle.collect(config: .default, clock: clock)
+    let collection = oracle.collect(config: .default, clock: clock, pinnedSessionIDs: [])
     var tracker = HintTracker()
     tracker.apply(
         NudgePayload(sessionId: "abc-123", hookEvent: "Notification", notificationKind: "idle_prompt"),
@@ -113,7 +113,7 @@ import Testing
     )
 
     let oracle = TranscriptOracle(roots: [transcripts.root])
-    let collection = oracle.collect(config: .default, clock: FixedClock(epoch: fixtureLastEventEpoch))
+    let collection = oracle.collect(config: .default, clock: FixedClock(epoch: fixtureLastEventEpoch), pinnedSessionIDs: [])
     #expect(collection.probes == [])
     #expect(collection.newFailures == [])
 }
@@ -125,7 +125,7 @@ import Testing
 
     let oracle = TranscriptOracle(roots: [transcripts.root])
     let clock = FixedClock(epoch: fixtureLastEventEpoch + 60)
-    let first = oracle.collect(config: .default, clock: clock)
+    let first = oracle.collect(config: .default, clock: clock, pinnedSessionIDs: [])
     let firstProbe = SessionProbe(
         sessionPath: path.path,
         isWaiting: false,
@@ -151,13 +151,13 @@ import Testing
     try transcripts.setMtime(path, epoch: fixtureLastEventEpoch)
 
     // Same key: the cache must hand back the OLD probe, not the shifted content.
-    let cached = oracle.collect(config: .default, clock: clock)
+    let cached = oracle.collect(config: .default, clock: clock, pinnedSessionIDs: [])
     #expect(cached.probes == [firstProbe])
 
     // A changed mtime invalidates the entry and forces a fresh probe that
     // reflects the shifted timestamp.
     try transcripts.setMtime(path, epoch: fixtureLastEventEpoch + 5)
-    let fresh = oracle.collect(config: .default, clock: clock)
+    let fresh = oracle.collect(config: .default, clock: clock, pinnedSessionIDs: [])
     #expect(fresh.probes == [SessionProbe(
         sessionPath: path.path,
         isWaiting: false,
@@ -175,7 +175,7 @@ import Testing
 
     // First pass parses cleanly: the mid-tool probe is cached as last-known-good.
     let oracle = TranscriptOracle(roots: [transcripts.root])
-    let good = oracle.collect(config: .default, clock: FixedClock(epoch: fixtureLastEventEpoch + 60))
+    let good = oracle.collect(config: .default, clock: FixedClock(epoch: fixtureLastEventEpoch + 60), pinnedSessionIDs: [])
     let lastKnownGood = SessionProbe(
         sessionPath: session.path,
         isWaiting: false,
@@ -194,14 +194,14 @@ import Testing
     // 301s later: past the 5-min recency window but inside the 12h mid-tool cap.
     // The first failed collect logs loudly and reasserts the last-known-good.
     let clock = FixedClock(epoch: fixtureLastEventEpoch + 301)
-    let firstFailure = oracle.collect(config: .default, clock: clock)
+    let firstFailure = oracle.collect(config: .default, clock: clock, pinnedSessionIDs: [])
     #expect(firstFailure.newFailures.count == 1)
     #expect(firstFailure.probes == [lastKnownGood])
 
     // The same (path, mtime, size, fileID) now serves the cached .failed outcome
     // from the cache-hit path — silent this time — and it must STILL reassert the
     // last-known-good rather than drop through to a bare recency probe.
-    let cachedFailure = oracle.collect(config: .default, clock: clock)
+    let cachedFailure = oracle.collect(config: .default, clock: clock, pinnedSessionIDs: [])
     #expect(cachedFailure.newFailures == [])
     #expect(cachedFailure.probes == [lastKnownGood])
 
@@ -228,7 +228,7 @@ import Testing
 
     let oracle = TranscriptOracle(roots: [transcripts.root])
     let clock = FixedClock(epoch: fixtureLastEventEpoch + 60)
-    let first = oracle.collect(config: .default, clock: clock)
+    let first = oracle.collect(config: .default, clock: clock, pinnedSessionIDs: [])
     #expect(first.probes.count == 2)
     #expect(first.newFailures.count == 1)
     let failure = try #require(first.newFailures.first)
@@ -236,7 +236,7 @@ import Testing
     #expect(!failure.message.isEmpty)
 
     // The failure is cached under the same keying: no repeat loud log.
-    let second = oracle.collect(config: .default, clock: clock)
+    let second = oracle.collect(config: .default, clock: clock, pinnedSessionIDs: [])
     #expect(second.probes == first.probes)
     #expect(second.newFailures == [])
 }
@@ -248,7 +248,7 @@ import Testing
 
     let oracle = TranscriptOracle(roots: [transcripts.root])
     let clock = FixedClock(epoch: fixtureLastEventEpoch + 60)
-    let collection = oracle.collect(config: .default, clock: clock)
+    let collection = oracle.collect(config: .default, clock: clock, pinnedSessionIDs: [])
     #expect(collection.newFailures.count == 1)
     #expect(collection.probes == [SessionProbe(
         sessionPath: poisoned.path,
@@ -279,7 +279,7 @@ import Testing
 
     let oracle = TranscriptOracle(roots: [transcripts.root])
     let clock = FixedClock(epoch: fixtureLastEventEpoch + 301)
-    let collection = oracle.collect(config: .default, clock: clock)
+    let collection = oracle.collect(config: .default, clock: clock, pinnedSessionIDs: [])
     #expect(collection.probes == [SessionProbe(
         sessionPath: poisoned.path,
         isWaiting: false,
@@ -305,7 +305,7 @@ import Testing
 
     // First pass parses cleanly: the mid-tool probe is cached as last-known-good.
     let oracle = TranscriptOracle(roots: [transcripts.root])
-    let good = oracle.collect(config: .default, clock: FixedClock(epoch: fixtureLastEventEpoch + 60))
+    let good = oracle.collect(config: .default, clock: FixedClock(epoch: fixtureLastEventEpoch + 60), pinnedSessionIDs: [])
     #expect(good.newFailures == [])
     #expect(good.probes == [SessionProbe(
         sessionPath: session.path,
@@ -325,7 +325,7 @@ import Testing
     // 301s later: past the 5-min recency window but well inside the 12h mid-tool
     // cap. The last-known-good mid-tool probe must hold the session active.
     let clock = FixedClock(epoch: fixtureLastEventEpoch + 301)
-    let collection = oracle.collect(config: .default, clock: clock)
+    let collection = oracle.collect(config: .default, clock: clock, pinnedSessionIDs: [])
     #expect(collection.newFailures.count == 1)
     #expect(collection.probes == [SessionProbe(
         sessionPath: session.path,

@@ -28,6 +28,27 @@ public struct SessionPidTracker: Equatable, Sendable {
         pidsBySessionID[sessionID] = TrackedPid(pid: pid, capturedAtEpoch: Int64(now.timeIntervalSince1970))
     }
 
+    /// Reclaims entries the map would otherwise hold for the life of the daemon,
+    /// at the collect-decision cadence. An entry is dropped only when it is both
+    /// no longer live — a vanished pid (dead) or one recycled by a later process
+    /// (ghost), the exact complement of `liveSessionIDs` — and captured before
+    /// `cutoffEpoch`, which the caller sets to the discovery window: past it the
+    /// mtime window has already dropped the transcript, so the mapping can never
+    /// pin anything again and simply reverts the session to unmapped cliff
+    /// behavior. A live session is kept regardless of age, since its long-running
+    /// process is exactly what the pin protects, and a recently-captured dead
+    /// entry is kept so a just-ended session is not evicted ahead of its
+    /// transcript. `processStart` floors to whole seconds like `liveSessionIDs`.
+    public mutating func prune(capturedBefore cutoffEpoch: Int64, processStart: (Int32) -> Int64?) {
+        pidsBySessionID = pidsBySessionID.filter { _, tracked in
+            if tracked.capturedAtEpoch >= cutoffEpoch {
+                return true
+            }
+            guard let started = processStart(tracked.pid) else { return false }
+            return started <= tracked.capturedAtEpoch
+        }
+    }
+
     public func pids(forPaths paths: [String]) -> [String: TrackedPid] {
         var pids: [String: TrackedPid] = [:]
         for path in paths {

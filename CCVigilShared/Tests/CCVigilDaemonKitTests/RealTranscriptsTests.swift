@@ -11,7 +11,7 @@ import Testing
         .appendingPathComponent(".claude/projects", isDirectory: true)
     let oracle = TranscriptOracle(roots: [root])
     let clock = SystemClock()
-    let collection = oracle.collect(config: .default, clock: clock)
+    let collection = oracle.collect(config: .default, clock: clock, pinnedSessionIDs: [])
 
     let nowEpoch = Int64(clock.now.timeIntervalSince1970)
     let earliestPlausible: Int64 = 1_577_836_800 // 2020-01-01

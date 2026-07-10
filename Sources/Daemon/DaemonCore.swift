@@ -21,6 +21,7 @@ actor DaemonCore {
 
     private var hints = HintTracker()
     private var backgroundWork = BackgroundWorkTracker()
+    private var pidTracker = SessionPidTracker()
     private var rootRegistry: TranscriptRootRegistry
     private var holds: HoldRegistry
     private var latch: CutoutLatch
@@ -109,6 +110,7 @@ actor DaemonCore {
         case let .nudge(payload):
             hints.apply(payload, now: clock.now)
             backgroundWork.apply(payload, now: clock.now)
+            pidTracker.apply(payload, now: clock.now)
             if let root = payload.transcriptsRoot {
                 registerTranscriptsRoot(root)
             }
@@ -261,9 +263,20 @@ actor DaemonCore {
 
     private func collectDecision() -> BlockDecision {
         let alive = processLister.claudeProcessesAlive()
+        // Floor process start to whole seconds (Int64(_:) truncates toward zero,
+        // which is floor for positive epochs), matching TrackedPid.capturedAtEpoch's
+        // own units so a same-second start reads as the live process, never a
+        // reuse ghost. The one adapter feeds pinning, eviction, and the decision.
+        let processStart: (Int32) -> Int64? = { pid in
+            ProcessFacts.processStart(pid: pid).map { Int64($0.timeIntervalSince1970) }
+        }
+        let pinned = pidTracker.liveSessionIDs(processStart: processStart)
+        let windowCutoff = Int64(clock.now.timeIntervalSince1970)
+            - Int64(TranscriptDiscoveryPolicy.windowSeconds(config: config))
+        pidTracker.prune(capturedBefore: windowCutoff, processStart: processStart)
         var probes: [SessionProbe] = []
         if alive {
-            let collection = oracle.collect(config: config, clock: clock)
+            let collection = oracle.collect(config: config, clock: clock, pinnedSessionIDs: pinned)
             for failure in collection.newFailures {
                 let detail = "\(failure.path): \(failure.message)"
                 Logger.daemon.fault("transcript probe failed, held via last-good/recency \(detail, privacy: .public)")
@@ -272,17 +285,13 @@ actor DaemonCore {
             probes = collection.probes
         }
         let paths = probes.map(\.sessionPath)
-        // TODO(cc-notes 0b9f2b5): populate sessionPids from a SessionPidTracker
-        // fed by nudges; empty keeps every session on the unmapped uniform cliff.
         let decision = OracleState(
             sessions: probes,
             humanWaitHints: hints.hints(forPaths: paths),
             backgroundWork: backgroundWork.reports(forPaths: paths),
-            sessionPids: [:],
+            sessionPids: pidTracker.pids(forPaths: paths),
             claudeProcessesAlive: alive
-        ).decision(config: config, clock: clock, processStart: { pid in
-            ProcessFacts.processStart(pid: pid).map { Int64($0.timeIntervalSince1970) }
-        })
+        ).decision(config: config, clock: clock, processStart: processStart)
         logFreshDiscounts(decision)
         lastDecision = decision
         return decision
