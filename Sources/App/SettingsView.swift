@@ -11,6 +11,7 @@ struct SettingsView: View {
             Section("Cutouts") {
                 batterySlider
                 thermalSlider
+                Toggle("Cut out in Low Power Mode", isOn: lowPowerCutout)
             }
             Section("Oracle") {
                 activityStepper
@@ -98,6 +99,13 @@ struct SettingsView: View {
         Binding(
             get: { model.config.hideMenuBarExtra },
             set: { model.setHideMenuBarExtra($0) }
+        )
+    }
+
+    private var lowPowerCutout: Binding<Bool> {
+        Binding(
+            get: { model.config.lowPowerCutout },
+            set: { model.setLowPowerCutout($0) }
         )
     }
 

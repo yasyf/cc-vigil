@@ -253,6 +253,13 @@ private struct LegacyStatusReport: Codable, Equatable {
     ))
 }
 
+@Test func statusReportToleratesUnknownCutoutKind() throws {
+    let json = #"{"activeSessions":[],"blockApplied":false,"helper":"reachable","#
+        + #""holds":[],"latchedCutouts":["battery","teleport"],"shouldBlock":false}"#
+    let decoded = try WireCodec.decodePayload(StatusReport.self, from: Data(json.utf8))
+    #expect(decoded.latchedCutouts == [.battery, .unknown])
+}
+
 @Test func statusReportRoundTripsWithAlerts() throws {
     let report = StatusReport(
         shouldBlock: true,

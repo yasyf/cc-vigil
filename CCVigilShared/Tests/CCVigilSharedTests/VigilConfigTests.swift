@@ -13,6 +13,20 @@ import Testing
     #expect(config.hideMenuBarExtra == false)
     #expect(config.notifyOnRelease == true)
     #expect(config.notifyOnCutout == true)
+    #expect(config.lowPowerCutout == true)
+}
+
+@Test func configDecodesLegacyJSONWithoutLowPowerCutoutDefaultsToTrue() throws {
+    let json = Data(#"{"batteryFloorPercent": 30}"#.utf8)
+    let config = try JSONDecoder().decode(VigilConfig.self, from: json)
+    #expect(config.lowPowerCutout == true)
+}
+
+@Test(arguments: [true, false])
+func configDecodesExplicitLowPowerCutout(value: Bool) throws {
+    let json = Data(#"{"lowPowerCutout": \#(value)}"#.utf8)
+    let config = try JSONDecoder().decode(VigilConfig.self, from: json)
+    #expect(config.lowPowerCutout == value)
 }
 
 @Test(arguments: [(5, 70.0), (50, 95.0)])
@@ -76,6 +90,7 @@ func configRejectsOutOfRange(field: String, value: String, allowed: String) {
     #expect(config.hideMenuBarExtra == false)
     #expect(config.notifyOnRelease == true)
     #expect(config.notifyOnCutout == true)
+    #expect(config.lowPowerCutout == true)
 }
 
 @Test func configRoundTripsThroughJSON() throws {
@@ -88,7 +103,8 @@ func configRejectsOutOfRange(field: String, value: String, allowed: String) {
         pollIdleSeconds: 60,
         hideMenuBarExtra: true,
         notifyOnRelease: false,
-        notifyOnCutout: false
+        notifyOnCutout: false,
+        lowPowerCutout: false
     )
     let decoded = try JSONDecoder().decode(VigilConfig.self, from: JSONEncoder().encode(original))
     #expect(decoded == original)

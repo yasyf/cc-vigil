@@ -6,14 +6,16 @@ private func sample(
     batteryPercent: Int = 100,
     thermalCelsius: Double? = nil,
     lidClosed: Bool = false,
-    blocking: Bool = false
+    blocking: Bool = false,
+    lowPowerEnabled: Bool = false
 ) -> PowerSample {
     PowerSample(
         onBattery: onBattery,
         batteryPercent: batteryPercent,
         thermalCelsius: thermalCelsius,
         lidClosed: lidClosed,
-        blocking: blocking
+        blocking: blocking,
+        lowPowerEnabled: lowPowerEnabled
     )
 }
 
@@ -103,6 +105,51 @@ func thermalLatchClearsWithHysteresisOrLidOpen(celsius: Double, lidClosed: Bool,
     _ = latch.update(with: sample(thermalCelsius: 85, lidClosed: true, blocking: true))
     #expect(latch.update(with: sample(thermalCelsius: nil, lidClosed: true, blocking: true)) == [])
     #expect(latch.latched == [.thermal])
+}
+
+@Test(arguments: [true, false])
+func lowPowerCutoutFiresWhileEnabled(enabled: Bool) {
+    var latch = defaultLatch()
+    let events = latch.update(with: sample(lowPowerEnabled: enabled))
+    #expect(events == (enabled ? [.latched(.lowPower)] : []))
+    #expect(latch.latched.contains(.lowPower) == enabled)
+}
+
+@Test func lowPowerCutoutIgnoresBatteryThermalAndLid() {
+    var latch = defaultLatch()
+    let events = latch.update(with: sample(
+        onBattery: false,
+        batteryPercent: 100,
+        thermalCelsius: 20,
+        lidClosed: false,
+        blocking: false,
+        lowPowerEnabled: true
+    ))
+    #expect(events == [.latched(.lowPower)])
+    #expect(latch.rejectionReasons == ["cutout-low-power"])
+}
+
+@Test func lowPowerLatchClearsImmediatelyWhenDisabled() {
+    var latch = defaultLatch()
+    #expect(latch.update(with: sample(lowPowerEnabled: true)) == [.latched(.lowPower)])
+    #expect(latch.update(with: sample(lowPowerEnabled: true)) == [])
+    #expect(latch.update(with: sample(lowPowerEnabled: false)) == [.cleared(.lowPower)])
+    #expect(latch.latched.isEmpty)
+}
+
+@Test func allThreeCutoutsLatchInOneUpdate() {
+    var latch = defaultLatch()
+    let events = latch.update(with: sample(
+        onBattery: true,
+        batteryPercent: 5,
+        thermalCelsius: 90,
+        lidClosed: true,
+        blocking: true,
+        lowPowerEnabled: true
+    ))
+    #expect(events == [.latched(.battery), .latched(.thermal), .latched(.lowPower)])
+    #expect(latch.latched == [.battery, .thermal, .lowPower])
+    #expect(latch.rejectionReasons == ["cutout-battery", "cutout-low-power", "cutout-thermal"])
 }
 
 @Test func bothCutoutsLatchInOneUpdate() {

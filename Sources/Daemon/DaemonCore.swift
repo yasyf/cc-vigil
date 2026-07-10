@@ -29,6 +29,7 @@ actor DaemonCore {
     private var pausedUntil: Date?
     private var clearLatch = ClearLatch()
     private var lidClosed = false
+    private var lowPowerEnabled = false
     private var battery: BatteryReading?
     private var appliedBlocked = false
     private var pushDecider = PushDecider(reconcileSeconds: DaemonCore.reconcileSeconds)
@@ -249,6 +250,13 @@ actor DaemonCore {
         await signal.nudge()
     }
 
+    func updateLowPower(enabled: Bool) async {
+        guard enabled != lowPowerEnabled else { return }
+        lowPowerEnabled = enabled
+        Logger.daemon.info("low power mode \(enabled ? "enabled" : "disabled", privacy: .public)")
+        await signal.nudge()
+    }
+
     func handleWake() async {
         Logger.daemon.info("system powered on: re-asserting and resetting idle baselines")
         record(.wake)
@@ -325,7 +333,8 @@ actor DaemonCore {
             batteryPercent: reading.percent,
             thermalCelsius: thermalCelsius,
             lidClosed: lidClosed,
-            blocking: blocking
+            blocking: blocking,
+            lowPowerEnabled: lowPowerEnabled
         )
         for event in latch.update(with: sample) {
             switch event {

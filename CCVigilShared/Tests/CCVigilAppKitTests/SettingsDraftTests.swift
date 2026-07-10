@@ -9,6 +9,7 @@ private enum EditableField: String, CaseIterable {
     case hideMenuBarExtra
     case notifyOnRelease
     case notifyOnCutout
+    case lowPowerCutout
 }
 
 private func config(
@@ -21,6 +22,7 @@ private func config(
     hideMenuBarExtra: Bool = true,
     notifyOnRelease: Bool = false,
     notifyOnCutout: Bool = false,
+    lowPowerCutout: Bool = false,
     transcriptsRoots: [String] = ["/roots/a", "/roots/b"]
 ) throws -> VigilConfig {
     try VigilConfig(
@@ -33,6 +35,7 @@ private func config(
         hideMenuBarExtra: hideMenuBarExtra,
         notifyOnRelease: notifyOnRelease,
         notifyOnCutout: notifyOnCutout,
+        lowPowerCutout: lowPowerCutout,
         transcriptsRoots: transcriptsRoots
     )
 }
@@ -66,6 +69,9 @@ private func settingsRewritePreservesEveryUntouchedField(field: EditableField) t
     case .notifyOnCutout:
         draft.notifyOnCutout = true
         expected = try config(notifyOnCutout: true)
+    case .lowPowerCutout:
+        draft.lowPowerCutout = true
+        expected = try config(lowPowerCutout: true)
     }
     #expect(try draft.resolved() == expected)
 }

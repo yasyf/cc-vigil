@@ -1,6 +1,16 @@
 public enum CutoutKind: String, Codable, Equatable, Sendable, CaseIterable {
     case battery
     case thermal
+    case lowPower = "low-power"
+    case unknown
+
+    /// A raw value from a newer peer that names a cutout this build does not know
+    /// decodes to `.unknown` instead of failing the whole report, mirroring the
+    /// `HelperLink.unknown` sentinel. Every decode site rides this one initializer.
+    public init(from decoder: Decoder) throws {
+        let raw = try decoder.singleValueContainer().decode(String.self)
+        self = CutoutKind(rawValue: raw) ?? .unknown
+    }
 
     public var rejectionReason: String {
         "cutout-\(rawValue)"
@@ -13,13 +23,22 @@ public struct PowerSample: Equatable, Sendable {
     public let thermalCelsius: Double?
     public let lidClosed: Bool
     public let blocking: Bool
+    public let lowPowerEnabled: Bool
 
-    public init(onBattery: Bool, batteryPercent: Int, thermalCelsius: Double?, lidClosed: Bool, blocking: Bool) {
+    public init(
+        onBattery: Bool,
+        batteryPercent: Int,
+        thermalCelsius: Double?,
+        lidClosed: Bool,
+        blocking: Bool,
+        lowPowerEnabled: Bool
+    ) {
         self.onBattery = onBattery
         self.batteryPercent = batteryPercent
         self.thermalCelsius = thermalCelsius
         self.lidClosed = lidClosed
         self.blocking = blocking
+        self.lowPowerEnabled = lowPowerEnabled
     }
 }
 
@@ -51,7 +70,7 @@ public struct CutoutLatch: Equatable, Sendable {
     }
 
     public mutating func update(with sample: PowerSample) -> [CutoutEvent] {
-        updateBattery(sample) + updateThermal(sample)
+        updateBattery(sample) + updateThermal(sample) + updateLowPower(sample)
     }
 
     private mutating func updateBattery(_ sample: PowerSample) -> [CutoutEvent] {
@@ -79,5 +98,16 @@ public struct CutoutLatch: Equatable, Sendable {
         else { return [] }
         latched.insert(.thermal)
         return [.latched(.thermal)]
+    }
+
+    private mutating func updateLowPower(_ sample: PowerSample) -> [CutoutEvent] {
+        if latched.contains(.lowPower) {
+            guard !sample.lowPowerEnabled else { return [] }
+            latched.remove(.lowPower)
+            return [.cleared(.lowPower)]
+        }
+        guard sample.lowPowerEnabled else { return [] }
+        latched.insert(.lowPower)
+        return [.latched(.lowPower)]
     }
 }

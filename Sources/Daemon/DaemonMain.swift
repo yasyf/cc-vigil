@@ -71,6 +71,7 @@ enum DaemonMain {
         retained = await startServices(
             options: options,
             paths: startup.paths,
+            config: startup.config,
             core: core,
             broadcaster: broadcaster,
             pusher: pusher
@@ -146,6 +147,7 @@ enum DaemonMain {
     private static func startServices(
         options: DaemonOptions,
         paths: SupportPaths,
+        config: VigilConfig,
         core: DaemonCore,
         broadcaster: StatusBroadcaster?,
         pusher: any BlockPushing
@@ -183,6 +185,14 @@ enum DaemonMain {
         if let lidMonitor {
             await core.updateLid(closed: lidMonitor.current())
         }
+        let lowPowerMonitor = config.lowPowerCutout
+            ? LowPowerMonitor(queue: monitorQueue) { enabled in
+                Task { await core.updateLowPower(enabled: enabled) }
+            }
+            : nil
+        if let lowPowerMonitor {
+            await core.updateLowPower(enabled: lowPowerMonitor.current())
+        }
         let wakeMonitor = WakeMonitor {
             Task { await core.handleWake() }
         }
@@ -191,6 +201,9 @@ enum DaemonMain {
         var services: [AnyObject] = [socketServer, batterySource, wakeMonitor]
         if let lidMonitor {
             services.append(lidMonitor)
+        }
+        if let lowPowerMonitor {
+            services.append(lowPowerMonitor)
         }
         if !options.dryRun, let broadcaster {
             let appServer = AppXPCServer(

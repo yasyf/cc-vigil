@@ -7,6 +7,7 @@ public struct SettingsDraft: Equatable, Sendable {
     public var hideMenuBarExtra: Bool
     public var notifyOnRelease: Bool
     public var notifyOnCutout: Bool
+    public var lowPowerCutout: Bool
 
     public let pendingAsyncMaxAgeSeconds: Int
     public let pollBlockingSeconds: Int
@@ -20,6 +21,7 @@ public struct SettingsDraft: Equatable, Sendable {
         hideMenuBarExtra = config.hideMenuBarExtra
         notifyOnRelease = config.notifyOnRelease
         notifyOnCutout = config.notifyOnCutout
+        lowPowerCutout = config.lowPowerCutout
         pendingAsyncMaxAgeSeconds = config.pendingAsyncMaxAgeSeconds
         pollBlockingSeconds = config.pollBlockingSeconds
         pollIdleSeconds = config.pollIdleSeconds
@@ -37,6 +39,7 @@ public struct SettingsDraft: Equatable, Sendable {
             hideMenuBarExtra: hideMenuBarExtra,
             notifyOnRelease: notifyOnRelease,
             notifyOnCutout: notifyOnCutout,
+            lowPowerCutout: lowPowerCutout,
             transcriptsRoots: transcriptsRoots
         )
     }

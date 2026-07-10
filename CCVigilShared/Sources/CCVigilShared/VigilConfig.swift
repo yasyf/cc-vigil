@@ -20,6 +20,7 @@ public struct VigilConfig: Codable, Equatable, Sendable {
     public let hideMenuBarExtra: Bool
     public let notifyOnRelease: Bool
     public let notifyOnCutout: Bool
+    public let lowPowerCutout: Bool
     public let transcriptsRoots: [String]
 
     private init() {
@@ -32,6 +33,7 @@ public struct VigilConfig: Codable, Equatable, Sendable {
         hideMenuBarExtra = false
         notifyOnRelease = true
         notifyOnCutout = true
+        lowPowerCutout = true
         transcriptsRoots = []
     }
 
@@ -45,6 +47,7 @@ public struct VigilConfig: Codable, Equatable, Sendable {
         hideMenuBarExtra: Bool = Self.default.hideMenuBarExtra,
         notifyOnRelease: Bool = Self.default.notifyOnRelease,
         notifyOnCutout: Bool = Self.default.notifyOnCutout,
+        lowPowerCutout: Bool = Self.default.lowPowerCutout,
         transcriptsRoots: [String] = Self.default.transcriptsRoots
     ) throws {
         guard Self.batteryFloorPercentRange.contains(batteryFloorPercent) else {
@@ -75,6 +78,7 @@ public struct VigilConfig: Codable, Equatable, Sendable {
         self.hideMenuBarExtra = hideMenuBarExtra
         self.notifyOnRelease = notifyOnRelease
         self.notifyOnCutout = notifyOnCutout
+        self.lowPowerCutout = lowPowerCutout
         self.transcriptsRoots = transcriptsRoots
     }
 
@@ -100,6 +104,8 @@ public struct VigilConfig: Codable, Equatable, Sendable {
                 .decodeIfPresent(Bool.self, forKey: .notifyOnRelease) ?? Self.default.notifyOnRelease,
             notifyOnCutout: container
                 .decodeIfPresent(Bool.self, forKey: .notifyOnCutout) ?? Self.default.notifyOnCutout,
+            lowPowerCutout: container
+                .decodeIfPresent(Bool.self, forKey: .lowPowerCutout) ?? Self.default.lowPowerCutout,
             transcriptsRoots: container
                 .decodeIfPresent([String].self, forKey: .transcriptsRoots) ?? Self.default.transcriptsRoots
         )

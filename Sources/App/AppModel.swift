@@ -150,6 +150,10 @@ final class AppModel {
         updateConfig { $0.thermalCutoutCelsius = celsius }
     }
 
+    func setLowPowerCutout(_ enabled: Bool) {
+        updateConfig { $0.lowPowerCutout = enabled }
+    }
+
     func setActivityWindow(minutes: Int) {
         updateConfig { $0.activityWindowSeconds = minutes * 60 }
     }
@@ -184,6 +188,7 @@ final class AppModel {
         let daemonCares = updated.batteryFloorPercent != config.batteryFloorPercent
             || updated.thermalCutoutCelsius != config.thermalCutoutCelsius
             || updated.activityWindowSeconds != config.activityWindowSeconds
+            || updated.lowPowerCutout != config.lowPowerCutout
         config = updated
         do {
             try ConfigLoader.save(updated, to: paths.configURL)
