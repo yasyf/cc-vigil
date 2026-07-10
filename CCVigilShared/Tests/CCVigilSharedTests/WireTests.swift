@@ -188,3 +188,86 @@ func requestRoundTripsThroughFrame(request: WireRequest) throws {
     let decoded = try #require(try WireCodec.decodeFrame(WireResponse.self, from: frame))
     #expect(decoded.value == .status(report))
 }
+
+private struct LegacyStatusReport: Codable, Equatable {
+    let shouldBlock: Bool
+    let blockApplied: Bool
+    let helper: HelperLink
+    let activeSessions: [ActiveSession]
+    let holds: [Hold]
+    let latchedCutouts: [CutoutKind]
+    let pausedUntil: Date?
+}
+
+@Test func statusReportDecodesV0_2_0JSONWithoutAlertsKey() throws {
+    let legacy = #"{"activeSessions":[],"blockApplied":false,"helper":"reachable","#
+        + #""holds":[],"latchedCutouts":[],"shouldBlock":false}"#
+    let decoded = try WireCodec.decodePayload(StatusReport.self, from: Data(legacy.utf8))
+    #expect(decoded.alerts == nil)
+    #expect(decoded == StatusReport(
+        shouldBlock: false,
+        blockApplied: false,
+        helper: .reachable,
+        activeSessions: [],
+        holds: [],
+        latchedCutouts: [],
+        pausedUntil: nil
+    ))
+}
+
+@Test func statusReportWithoutAlertsOmitsTheKey() throws {
+    let report = StatusReport(
+        shouldBlock: false,
+        blockApplied: false,
+        helper: .reachable,
+        activeSessions: [],
+        holds: [],
+        latchedCutouts: [],
+        pausedUntil: nil
+    )
+    let encoded = try #require(String(bytes: WireCodec.encodePayload(report), encoding: .utf8))
+    #expect(!encoded.contains("alerts"))
+}
+
+@Test func newReportWithAlertsDecodesUnderTheOldShape() throws {
+    let report = StatusReport(
+        shouldBlock: false,
+        blockApplied: false,
+        helper: .reachable,
+        activeSessions: [],
+        holds: [],
+        latchedCutouts: [],
+        pausedUntil: nil,
+        alerts: [SleepAlert(id: 1, atEpoch: 1_767_000_000, payload: .released(sessions: 1, holds: 0))]
+    )
+    let encoded = try WireCodec.encodePayload(report)
+    let legacy = try WireCodec.decodePayload(LegacyStatusReport.self, from: encoded)
+    #expect(legacy == LegacyStatusReport(
+        shouldBlock: false,
+        blockApplied: false,
+        helper: .reachable,
+        activeSessions: [],
+        holds: [],
+        latchedCutouts: [],
+        pausedUntil: nil
+    ))
+}
+
+@Test func statusReportRoundTripsWithAlerts() throws {
+    let report = StatusReport(
+        shouldBlock: true,
+        blockApplied: true,
+        helper: .reachable,
+        activeSessions: [],
+        holds: [],
+        latchedCutouts: [.battery],
+        pausedUntil: nil,
+        alerts: [
+            SleepAlert(id: 1, atEpoch: 1_767_000_000, payload: .cutoutLatched(kinds: [.battery])),
+            SleepAlert(id: 2, atEpoch: 1_767_000_050, payload: .released(sessions: 2, holds: 1)),
+        ]
+    )
+    let frame = try WireCodec.encodeFrame(WireResponse.status(report))
+    let decoded = try #require(try WireCodec.decodeFrame(WireResponse.self, from: frame))
+    #expect(decoded.value == .status(report))
+}

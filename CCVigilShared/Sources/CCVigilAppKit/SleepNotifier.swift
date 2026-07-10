@@ -37,6 +37,10 @@ public struct SleepNotification: Equatable, Sendable {
 /// across the gap, and a clean fix needs daemon-side alert telemetry. The
 /// daemon's events.log remains the ground truth; the away summary surfaces
 /// anything these toasts miss.
+///
+/// Residual (superseded daemon-side by SleepAlertComposer, which now mints these
+/// edges from the daemon's unbroken stream onto the StatusReport alert ring):
+/// only alerts older than that ring still fall through to the away summary.
 public struct SleepNotifier: Equatable, Sendable {
     private var previous: StatusReport?
     private var lastBlocking: StatusReport?

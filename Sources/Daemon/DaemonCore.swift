@@ -36,6 +36,7 @@ actor DaemonCore {
     private var lastBatteryPollAt = Date.distantPast
     private var lastDecision = BlockDecision(shouldBlock: false, activeSessions: [], discounts: [])
     private var lastStatus: StatusReport?
+    private var alertComposer: SleepAlertComposer
 
     init(
         config: VigilConfig,
@@ -52,7 +53,9 @@ actor DaemonCore {
         batterySampler: @escaping @Sendable () -> BatteryReading?,
         restoredHolds: HoldRegistry,
         restoredPausedUntil: Date?,
-        restoredRegisteredRoots: [String]
+        restoredRegisteredRoots: [String],
+        restoredNextAlertId: Int64,
+        restoredRecentAlerts: [SleepAlert]
     ) {
         self.config = config
         self.clock = clock
@@ -75,6 +78,7 @@ actor DaemonCore {
         holds = restoredHolds
         latch = CutoutLatch(config: config)
         pausedUntil = restoredPausedUntil
+        alertComposer = SleepAlertComposer(nextAlertId: restoredNextAlertId, recentAlerts: restoredRecentAlerts)
     }
 
     var pollIntervalSeconds: Double {
@@ -99,6 +103,7 @@ actor DaemonCore {
         ).desired
         lastDesired = desired
         await pushIfNeeded(desired: desired, decision: decision, holds: activeHolds, now: now)
+        composeAlerts(now: now)
         publishStatus()
     }
 
@@ -349,18 +354,6 @@ actor DaemonCore {
         broadcaster.broadcast(payload)
     }
 
-    private func statusReport() -> StatusReport {
-        StatusReport(
-            shouldBlock: lastDesired,
-            blockApplied: appliedBlocked,
-            helper: helperLink,
-            activeSessions: lastDecision.activeSessions,
-            holds: holds.active(clock: clock),
-            latchedCutouts: latch.latched.sorted { $0.rawValue < $1.rawValue },
-            pausedUntil: pausedUntil
-        )
-    }
-
     private func expireHolds() {
         let expired = holds.prune(clock: clock)
         guard !expired.isEmpty else { return }
@@ -381,7 +374,9 @@ actor DaemonCore {
                 PersistedState(
                     holds: holds.holds,
                     pausedUntil: pausedUntil,
-                    registeredRoots: rootRegistry.registeredRoots
+                    registeredRoots: rootRegistry.registeredRoots,
+                    nextAlertId: alertComposer.nextAlertId,
+                    recentAlerts: alertComposer.recentAlerts
                 ),
                 to: stateURL
             )
@@ -400,6 +395,29 @@ actor DaemonCore {
 }
 
 private extension DaemonCore {
+    func statusReport() -> StatusReport {
+        StatusReport(
+            shouldBlock: lastDesired,
+            blockApplied: appliedBlocked,
+            helper: helperLink,
+            activeSessions: lastDecision.activeSessions,
+            holds: holds.active(clock: clock),
+            latchedCutouts: latch.latched.sorted { $0.rawValue < $1.rawValue },
+            pausedUntil: pausedUntil,
+            alerts: alertComposer.recentAlerts.isEmpty ? nil : alertComposer.recentAlerts
+        )
+    }
+
+    /// Feeds the composer the daemon's own status on every tick — the unbroken
+    /// stream the App layer can only approximate — so each release/cutout edge
+    /// is minted once, with a monotonic id, and rides the next status push. The
+    /// ring is persisted only when an alert actually fires, keeping steady-state
+    /// ticks off the disk.
+    func composeAlerts(now: Date) {
+        guard !alertComposer.ingest(statusReport(), now: now).isEmpty else { return }
+        persistState()
+    }
+
     /// The single funnel both battery write paths pass through — the IOPS callback
     /// and the closed-lid safety poll in `updateLatch`. It runs the transition
     /// check (and forces a re-assert while a block is desired) *before* the reading

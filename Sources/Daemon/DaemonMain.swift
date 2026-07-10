@@ -57,7 +57,9 @@ enum DaemonMain {
             batterySampler: batterySampler,
             restoredHolds: startup.holds,
             restoredPausedUntil: startup.pausedUntil,
-            restoredRegisteredRoots: startup.registeredRoots
+            restoredRegisteredRoots: startup.registeredRoots,
+            restoredNextAlertId: startup.nextAlertId,
+            restoredRecentAlerts: startup.recentAlerts
         )
         if !options.dryRun {
             await helperClient.setDisruptionHandler {
@@ -94,6 +96,8 @@ enum DaemonMain {
         let holds: HoldRegistry
         let pausedUntil: Date?
         let registeredRoots: [String]
+        let nextAlertId: Int64
+        let recentAlerts: [SleepAlert]
     }
 
     private static func loadStartup(options: DaemonOptions) -> Startup {
@@ -130,7 +134,9 @@ enum DaemonMain {
             config: config,
             holds: holds,
             pausedUntil: pausedUntil,
-            registeredRoots: restored.registeredRoots
+            registeredRoots: restored.registeredRoots,
+            nextAlertId: restored.nextAlertId,
+            recentAlerts: restored.recentAlerts
         )
     }
 

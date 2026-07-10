@@ -163,6 +163,7 @@ public struct StatusReport: Codable, Equatable, Sendable {
     public let holds: [Hold]
     public let latchedCutouts: [CutoutKind]
     public let pausedUntil: Date?
+    public let alerts: [SleepAlert]?
 
     public init(
         shouldBlock: Bool,
@@ -171,7 +172,8 @@ public struct StatusReport: Codable, Equatable, Sendable {
         activeSessions: [ActiveSession],
         holds: [Hold],
         latchedCutouts: [CutoutKind],
-        pausedUntil: Date?
+        pausedUntil: Date?,
+        alerts: [SleepAlert]? = nil
     ) {
         self.shouldBlock = shouldBlock
         self.blockApplied = blockApplied
@@ -180,6 +182,7 @@ public struct StatusReport: Codable, Equatable, Sendable {
         self.holds = holds
         self.latchedCutouts = latchedCutouts
         self.pausedUntil = pausedUntil
+        self.alerts = alerts
     }
 }
 
