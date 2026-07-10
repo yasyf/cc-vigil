@@ -55,7 +55,8 @@ actor DaemonCore {
         restoredPausedUntil: Date?,
         restoredRegisteredRoots: [String],
         restoredNextAlertId: Int64,
-        restoredRecentAlerts: [SleepAlert]
+        restoredRecentAlerts: [SleepAlert],
+        restoredAlertedCutouts: Set<CutoutKind>
     ) {
         self.config = config
         self.clock = clock
@@ -78,7 +79,11 @@ actor DaemonCore {
         holds = restoredHolds
         latch = CutoutLatch(config: config)
         pausedUntil = restoredPausedUntil
-        alertComposer = SleepAlertComposer(nextAlertId: restoredNextAlertId, recentAlerts: restoredRecentAlerts)
+        alertComposer = SleepAlertComposer(
+            nextAlertId: restoredNextAlertId,
+            recentAlerts: restoredRecentAlerts,
+            alertedCutouts: restoredAlertedCutouts
+        )
     }
 
     var pollIntervalSeconds: Double {
@@ -376,7 +381,8 @@ actor DaemonCore {
                     pausedUntil: pausedUntil,
                     registeredRoots: rootRegistry.registeredRoots,
                     nextAlertId: alertComposer.nextAlertId,
-                    recentAlerts: alertComposer.recentAlerts
+                    recentAlerts: alertComposer.recentAlerts,
+                    alertedCutouts: alertComposer.alertedCutouts
                 ),
                 to: stateURL
             )

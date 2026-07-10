@@ -216,3 +216,29 @@ func releaseSuppressedByLingeringSessionsOrHolds(sessions: [ActiveSession], hold
     #expect(composer.recentAlerts.map(\.id) == [3, 4, 5])
     #expect(composer.nextAlertId == 6)
 }
+
+@Test func seededAlertedCutoutDoesNotReAnnounceStillLatchedAcrossRestart() {
+    var composer = SleepAlertComposer(alertedCutouts: [.battery])
+    let stillLatched = report(
+        shouldBlock: false,
+        blockApplied: false,
+        activeSessions: [session],
+        latchedCutouts: [.battery]
+    )
+    #expect(composer.ingest(stillLatched, now: now) == [])
+    #expect(composer.alertedCutouts == [.battery])
+}
+
+@Test func seededAlertedCutoutReArmsAfterUnlatch() {
+    var composer = SleepAlertComposer(alertedCutouts: [.battery])
+    let results = [
+        report(shouldBlock: false, blockApplied: false, activeSessions: [session], latchedCutouts: [.battery]),
+        report(shouldBlock: true, blockApplied: true, activeSessions: [session]),
+        report(shouldBlock: false, blockApplied: false, activeSessions: [session], latchedCutouts: [.battery]),
+    ].map { composer.ingest($0, now: now) }
+    #expect(results == [
+        [],
+        [],
+        [SleepAlert(id: 1, atEpoch: atEpoch, payload: .cutoutLatched(kinds: [.battery]))],
+    ])
+}

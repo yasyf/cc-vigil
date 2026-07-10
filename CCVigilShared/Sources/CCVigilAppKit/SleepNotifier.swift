@@ -63,16 +63,21 @@ public final class UserDefaultsAlertWatermarkStore: AlertWatermarkStore, @unchec
 /// exactly once each. The daemon's SleepAlertComposer mints every release and
 /// cutout edge from its own unbroken status stream and rides the recent-alert
 /// ring on each StatusReport; this consumer posts the alerts newer than its
-/// persisted watermark, in id order, then advances the watermark. Duplicate
-/// pushes, an XPC reconnect that re-delivers the same ring, and an app restart
-/// therefore replay nothing already seen, and a report whose ring the daemon
-/// encoded as `nil` (an old daemon during upgrade skew) leaves the watermark
-/// untouched. The toast copy and NotificationSettings gating are the App's job,
-/// applied here at post time keyed off each alert's kind.
+/// persisted watermark, in id order, then advances the watermark — never
+/// backward, so a stale report re-delivering an older ring replays nothing.
+/// Duplicate pushes, an XPC reconnect, and an app restart are all no-ops for
+/// alerts already seen, and a report whose ring the daemon encoded as `nil`
+/// (an old daemon during upgrade skew) leaves the watermark untouched. The
+/// toast copy and NotificationSettings gating are the App's job, applied here
+/// at post time keyed off each alert's kind.
 ///
-/// One residual: alerts older than the daemon's ring cap age out of the ring
-/// before the App can see them; the away summary remains the ground truth that
-/// surfaces those.
+/// Residuals, by design: alerts older than the daemon's ring cap age out
+/// before a long-absent App sees them, and an edge that both begins and
+/// resolves inside a daemon restart is never minted at all — the away summary,
+/// built from events.log, remains the ground truth that surfaces both. A
+/// daemon whose id counter regressed (state.json rewritten by an older
+/// daemon) mints ids below the watermark and those toasts stay suppressed
+/// until the counter passes it again.
 public struct SleepNotifier {
     private let store: any AlertWatermarkStore
 
@@ -82,19 +87,26 @@ public struct SleepNotifier {
 
     public func consume(
         _ event: StatusViewModel.Event,
-        settings: NotificationSettings
-    ) -> [SleepNotification] {
-        guard case let .statusUpdated(report) = event, let alerts = report.alerts else { return [] }
+        settings: NotificationSettings,
+        post: (SleepNotification) -> Void
+    ) {
+        guard case let .statusUpdated(report) = event, let alerts = report.alerts else { return }
         let newest = alerts.map(\.id).max()
         guard let watermark = store.lastSeenAlertId else {
             // First run: adopt the ring's newest id as the baseline rather than
             // replaying the whole ring as a burst of toasts.
             newest.map(store.recordSeen)
-            return []
+            return
         }
         let fresh = alerts.filter { $0.id > watermark }.sorted { $0.id < $1.id }
-        newest.map(store.recordSeen)
-        return fresh.compactMap { Self.notification(for: $0, settings: settings) }
+        for alert in fresh {
+            if let notification = Self.notification(for: alert, settings: settings) {
+                post(notification)
+            }
+        }
+        if let newest, newest > watermark {
+            store.recordSeen(newest)
+        }
     }
 
     private static func notification(

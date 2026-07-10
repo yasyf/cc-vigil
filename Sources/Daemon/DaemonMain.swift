@@ -59,7 +59,8 @@ enum DaemonMain {
             restoredPausedUntil: startup.pausedUntil,
             restoredRegisteredRoots: startup.registeredRoots,
             restoredNextAlertId: startup.nextAlertId,
-            restoredRecentAlerts: startup.recentAlerts
+            restoredRecentAlerts: startup.recentAlerts,
+            restoredAlertedCutouts: startup.alertedCutouts
         )
         if !options.dryRun {
             await helperClient.setDisruptionHandler {
@@ -98,6 +99,7 @@ enum DaemonMain {
         let registeredRoots: [String]
         let nextAlertId: Int64
         let recentAlerts: [SleepAlert]
+        let alertedCutouts: Set<CutoutKind>
     }
 
     private static func loadStartup(options: DaemonOptions) -> Startup {
@@ -136,7 +138,8 @@ enum DaemonMain {
             pausedUntil: pausedUntil,
             registeredRoots: restored.registeredRoots,
             nextAlertId: restored.nextAlertId,
-            recentAlerts: restored.recentAlerts
+            recentAlerts: restored.recentAlerts,
+            alertedCutouts: restored.alertedCutouts
         )
     }
 

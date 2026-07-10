@@ -6,19 +6,22 @@ public struct PersistedState: Codable, Equatable, Sendable {
     public let registeredRoots: [String]
     public let nextAlertId: Int64
     public let recentAlerts: [SleepAlert]
+    public let alertedCutouts: Set<CutoutKind>
 
     public init(
         holds: [Hold],
         pausedUntil: Date?,
         registeredRoots: [String] = [],
         nextAlertId: Int64 = 1,
-        recentAlerts: [SleepAlert] = []
+        recentAlerts: [SleepAlert] = [],
+        alertedCutouts: Set<CutoutKind> = []
     ) {
         self.holds = holds
         self.pausedUntil = pausedUntil
         self.registeredRoots = registeredRoots
         self.nextAlertId = nextAlertId
         self.recentAlerts = recentAlerts
+        self.alertedCutouts = alertedCutouts
     }
 
     public init(from decoder: Decoder) throws {
@@ -28,5 +31,6 @@ public struct PersistedState: Codable, Equatable, Sendable {
         registeredRoots = try container.decodeIfPresent([String].self, forKey: .registeredRoots) ?? []
         nextAlertId = try container.decodeIfPresent(Int64.self, forKey: .nextAlertId) ?? 1
         recentAlerts = try container.decodeIfPresent([SleepAlert].self, forKey: .recentAlerts) ?? []
+        alertedCutouts = try container.decodeIfPresent(Set<CutoutKind>.self, forKey: .alertedCutouts) ?? []
     }
 }

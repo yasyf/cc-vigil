@@ -8,18 +8,26 @@ import Foundation
 /// gap the way the App layer does. That is the entire point: the daemon never
 /// disconnects from itself, so `previous`-state tracking is trustworthy and
 /// each edge is seen exactly once, at its source.
+/// The alerted-cutout set persists with the counter and ring, so a daemon
+/// restart does not re-announce a cutout still latched from before it.
 public struct SleepAlertComposer: Equatable, Sendable {
     public private(set) var nextAlertId: Int64
     public private(set) var recentAlerts: [SleepAlert]
+    public private(set) var alertedCutouts: Set<CutoutKind>
 
     private let cap: Int
     private var previous: StatusReport?
     private var lastBlocking: StatusReport?
-    private var alertedCutouts: Set<CutoutKind> = []
 
-    public init(nextAlertId: Int64 = 1, recentAlerts: [SleepAlert] = [], cap: Int = 32) {
+    public init(
+        nextAlertId: Int64 = 1,
+        recentAlerts: [SleepAlert] = [],
+        alertedCutouts: Set<CutoutKind> = [],
+        cap: Int = 32
+    ) {
         self.nextAlertId = nextAlertId
         self.recentAlerts = recentAlerts
+        self.alertedCutouts = alertedCutouts
         self.cap = cap
     }
 

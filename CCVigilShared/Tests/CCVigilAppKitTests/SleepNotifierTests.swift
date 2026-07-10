@@ -23,6 +23,40 @@ private final class FakeWatermarkStore: AlertWatermarkStore, @unchecked Sendable
     }
 }
 
+/// Records the interleaving of post and recordSeen calls so a test can pin that
+/// the watermark advances only after every alert in a report has been posted.
+private final class OrderLog: @unchecked Sendable {
+    enum Step: Equatable {
+        case post(SleepNotification.Kind)
+        case record(Int64)
+    }
+
+    private(set) var steps: [Step] = []
+
+    func post(_ notification: SleepNotification) {
+        steps.append(.post(notification.kind))
+    }
+
+    func record(_ id: Int64) {
+        steps.append(.record(id))
+    }
+}
+
+private final class SpyWatermarkStore: AlertWatermarkStore, @unchecked Sendable {
+    private(set) var lastSeenAlertId: Int64?
+    private let log: OrderLog
+
+    init(lastSeenAlertId: Int64?, log: OrderLog) {
+        self.lastSeenAlertId = lastSeenAlertId
+        self.log = log
+    }
+
+    func recordSeen(_ id: Int64) {
+        log.record(id)
+        lastSeenAlertId = id
+    }
+}
+
 private func released(id: Int64, sessions: Int, holds: Int) -> SleepAlert {
     SleepAlert(id: id, atEpoch: atEpoch, payload: .released(sessions: sessions, holds: holds))
 }
@@ -46,13 +80,23 @@ private func report(alerts: [SleepAlert]?) -> StatusReport {
     )
 }
 
+private func posted(
+    _ notifier: SleepNotifier,
+    _ event: StatusViewModel.Event,
+    settings: NotificationSettings = .both
+) -> [SleepNotification] {
+    var out: [SleepNotification] = []
+    notifier.consume(event, settings: settings) { out.append($0) }
+    return out
+}
+
 private func consume(
     _ reports: [StatusReport],
     store: FakeWatermarkStore,
     settings: NotificationSettings = .both
 ) -> [[SleepNotification]] {
     let notifier = SleepNotifier(store: store)
-    return reports.map { notifier.consume(.statusUpdated($0), settings: settings) }
+    return reports.map { posted(notifier, .statusUpdated($0), settings: settings) }
 }
 
 private let releasedToast = SleepNotification(
@@ -109,11 +153,11 @@ private let cutoutToast = SleepNotification(
     let base = [released(id: 1, sessions: 1, holds: 1)]
     let grown = base + [cutout(id: 2, [.battery])]
     let notifier = SleepNotifier(store: store)
-    _ = notifier.consume(.statusUpdated(report(alerts: base)), settings: .both)
-    let posted = notifier.consume(.statusUpdated(report(alerts: grown)), settings: .both)
-    let afterDrop = notifier.consume(.disconnected, settings: .both)
-    let afterReconnect = notifier.consume(.statusUpdated(report(alerts: grown)), settings: .both)
-    #expect(posted == [cutoutToast])
+    _ = posted(notifier, .statusUpdated(report(alerts: base)))
+    let firstPost = posted(notifier, .statusUpdated(report(alerts: grown)))
+    let afterDrop = posted(notifier, .disconnected)
+    let afterReconnect = posted(notifier, .statusUpdated(report(alerts: grown)))
+    #expect(firstPost == [cutoutToast])
     #expect(afterDrop == [])
     #expect(afterReconnect == [])
     #expect(store.lastSeenAlertId == 2)
@@ -122,10 +166,9 @@ private let cutoutToast = SleepNotification(
 @Test func appRestartResumesFromPersistedWatermark() {
     let store = FakeWatermarkStore()
     let ring = [released(id: 1, sessions: 1, holds: 1), cutout(id: 2, [.battery])]
-    _ = SleepNotifier(store: store).consume(.statusUpdated(report(alerts: ring)), settings: .both)
+    _ = posted(SleepNotifier(store: store), .statusUpdated(report(alerts: ring)))
     #expect(store.lastSeenAlertId == 2)
-    let afterRestart = SleepNotifier(store: store)
-        .consume(.statusUpdated(report(alerts: ring)), settings: .both)
+    let afterRestart = posted(SleepNotifier(store: store), .statusUpdated(report(alerts: ring)))
     #expect(afterRestart == [])
     #expect(store.lastSeenAlertId == 2)
 }
@@ -192,12 +235,12 @@ private let cutoutToast = SleepNotification(
 @Test func nilAlertsReportPostsNothingAndLeavesTheWatermark() {
     let store = FakeWatermarkStore()
     let ring = [released(id: 1, sessions: 1, holds: 1), cutout(id: 2, [.battery])]
-    _ = SleepNotifier(store: store).consume(.statusUpdated(report(alerts: ring)), settings: .both)
+    _ = posted(SleepNotifier(store: store), .statusUpdated(report(alerts: ring)))
     #expect(store.lastSeenAlertId == 2)
     let notifier = SleepNotifier(store: store)
-    #expect(notifier.consume(.statusUpdated(report(alerts: nil)), settings: .both) == [])
+    #expect(posted(notifier, .statusUpdated(report(alerts: nil))) == [])
     #expect(store.lastSeenAlertId == 2)
-    #expect(notifier.consume(.statusUpdated(report(alerts: ring)), settings: .both) == [])
+    #expect(posted(notifier, .statusUpdated(report(alerts: ring))) == [])
     #expect(store.lastSeenAlertId == 2)
 }
 
@@ -206,4 +249,39 @@ private let cutoutToast = SleepNotification(
     let result = consume([report(alerts: nil)], store: store)
     #expect(result == [[]])
     #expect(store.lastSeenAlertId == nil)
+}
+
+/// A stale report re-delivering an OLDER ring (an out-of-order push around a
+/// reconnect) must never drag the watermark backward; otherwise already-seen
+/// alerts re-post as duplicates once the ring re-advances.
+@Test func staleOlderRingNeverDragsTheWatermarkBackward() {
+    let store = FakeWatermarkStore()
+    let notifier = SleepNotifier(store: store)
+    let ringFiveSix = [released(id: 5, sessions: 1, holds: 1), released(id: 6, sessions: 1, holds: 1)]
+    #expect(posted(notifier, .statusUpdated(report(alerts: ringFiveSix))) == [])
+    #expect(store.lastSeenAlertId == 6)
+
+    let staleRingThreeFour = [released(id: 3, sessions: 1, holds: 1), released(id: 4, sessions: 1, holds: 1)]
+    #expect(posted(notifier, .statusUpdated(report(alerts: staleRingThreeFour))) == [])
+    #expect(store.lastSeenAlertId == 6)
+
+    let ringSeven = [released(id: 7, sessions: 1, holds: 1)]
+    #expect(posted(notifier, .statusUpdated(report(alerts: ringSeven))) == [releasedToast])
+    #expect(store.lastSeenAlertId == 7)
+}
+
+/// A crash mid-tick must re-post rather than silently drop, so the watermark is
+/// persisted only after every alert in the report has been handed to the poster.
+@Test func advancesWatermarkOnlyAfterPostingEveryAlert() {
+    let log = OrderLog()
+    let store = SpyWatermarkStore(lastSeenAlertId: 1, log: log)
+    let notifier = SleepNotifier(store: store)
+    let ring = [
+        released(id: 1, sessions: 1, holds: 1),
+        cutout(id: 2, [.battery]),
+        released(id: 3, sessions: 2, holds: 0),
+    ]
+    notifier.consume(.statusUpdated(report(alerts: ring)), settings: .both) { log.post($0) }
+    #expect(log.steps == [.post(.cutoutLatched), .post(.released), .record(3)])
+    #expect(store.lastSeenAlertId == 3)
 }

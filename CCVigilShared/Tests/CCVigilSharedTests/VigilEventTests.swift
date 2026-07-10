@@ -135,7 +135,7 @@ func roundTrips(record: EventRecord) throws {
         registeredRoots: ["/relocated/.claude/projects"]
     )
     let encoded = try #require(String(bytes: WireCodec.encodePayload(state), encoding: .utf8))
-    #expect(encoded == "{\"holds\":[{\"createdAt\":1767323047,\"key\":\"ci\","
+    #expect(encoded == "{\"alertedCutouts\":[],\"holds\":[{\"createdAt\":1767323047,\"key\":\"ci\","
         + "\"reason\":\"build\",\"ttlSeconds\":60}],\"nextAlertId\":1,\"pausedUntil\":1767323100,"
         + "\"recentAlerts\":[],\"registeredRoots\":[\"/relocated/.claude/projects\"]}")
     #expect(try WireCodec.decodePayload(PersistedState.self, from: Data(encoded.utf8)) == state)
@@ -155,6 +155,12 @@ func roundTrips(record: EventRecord) throws {
     #expect(decoded.recentAlerts == [])
 }
 
+@Test func persistedStateDecodesLegacyJSONWithoutAlertedCutouts() throws {
+    let legacy = "{\"holds\":[],\"pausedUntil\":1767323100}"
+    let decoded = try WireCodec.decodePayload(PersistedState.self, from: Data(legacy.utf8))
+    #expect(decoded.alertedCutouts == [])
+}
+
 @Test func persistedStateRoundTripsAlertFields() throws {
     let state = PersistedState(
         holds: [],
@@ -164,6 +170,16 @@ func roundTrips(record: EventRecord) throws {
             SleepAlert(id: 5, atEpoch: 1_767_323_047, payload: .released(sessions: 2, holds: 1)),
             SleepAlert(id: 6, atEpoch: 1_767_323_100, payload: .cutoutLatched(kinds: [.battery, .thermal])),
         ]
+    )
+    let encoded = try WireCodec.encodePayload(state)
+    #expect(try WireCodec.decodePayload(PersistedState.self, from: encoded) == state)
+}
+
+@Test func persistedStateRoundTripsAlertedCutouts() throws {
+    let state = PersistedState(
+        holds: [],
+        pausedUntil: nil,
+        alertedCutouts: [.battery, .thermal]
     )
     let encoded = try WireCodec.encodePayload(state)
     #expect(try WireCodec.decodePayload(PersistedState.self, from: encoded) == state)

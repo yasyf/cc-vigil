@@ -37,7 +37,8 @@ final class SleepNotificationController: NSObject, UNUserNotificationCenterDeleg
     }
 
     func handle(_ event: StatusViewModel.Event, settings: NotificationSettings) {
-        let pending = notifier.consume(event, settings: settings)
+        var pending: [SleepNotification] = []
+        notifier.consume(event, settings: settings) { pending.append($0) }
         guard !pending.isEmpty else { return }
         Task { await deliver(pending) }
     }
