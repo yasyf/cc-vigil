@@ -1,0 +1,8 @@
+fragments = [
+  "cc-vigil-intro",
+  "cc-skills:ccx",
+  "cc-vigil-conventions",
+]
+
+[sources.cc-skills]
+source = "github:yasyf/cc-skills@main"
