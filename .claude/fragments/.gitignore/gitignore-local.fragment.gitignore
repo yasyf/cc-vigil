@@ -1,0 +1,8 @@
+# Xcode — CCVigil.xcodeproj and Generated/ are emitted by `xcodegen generate`
+CCVigil.xcodeproj/
+Generated/
+build-release/
+
+# Release: render-formula's cask staging dir + notarized zip output
+tap-staging/
+dist/
