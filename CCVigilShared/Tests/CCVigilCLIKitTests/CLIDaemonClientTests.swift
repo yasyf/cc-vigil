@@ -22,73 +22,121 @@ private let sampleReport = StatusReport(
 
 @Suite(.serialized)
 struct CLIDaemonClientTests {
-    @Test func roundTripsPing() throws {
+    @Test func roundTripsPing() async throws {
         let dir = try ShortTempDir(prefix: "sock")
         defer { dir.tearDown() }
         let server = FakeSocketServer(path: dir.socketPath("s.sock"), reply: .respond(.ok))
-        try server.start()
-        defer { server.stop() }
-        let client = CLIDaemonClient(path: server.path, timeoutSeconds: 2)
-        #expect(try client.roundTrip(.ping) == .ok)
-        #expect(try client.roundTrip(.ping) == .ok)
-        #expect(server.requests == [.ping, .ping])
+        try await server.withStarted { () async throws in
+            try await withCLIDaemonClient(path: server.path, timeoutSeconds: 2) { client in
+                let first = try await client.roundTrip(.ping)
+                let second = try await client.roundTrip(.ping)
+                #expect(first == .ok)
+                #expect(second == .ok)
+                #expect(server.requests == [.ping, .ping])
+            }
+        }
     }
 
-    @Test func roundTripsStatusReport() throws {
+    @Test func roundTripsStatusReport() async throws {
         let dir = try ShortTempDir(prefix: "sock")
         defer { dir.tearDown() }
         let server = FakeSocketServer(path: dir.socketPath("s.sock"), reply: .respond(.status(sampleReport)))
-        try server.start()
-        defer { server.stop() }
-        let client = CLIDaemonClient(path: server.path, timeoutSeconds: 2)
-        #expect(try client.roundTrip(.status) == .status(sampleReport))
-        #expect(server.requests == [.status])
+        try await server.withStarted { () async throws in
+            try await withCLIDaemonClient(path: server.path, timeoutSeconds: 2) { client in
+                let response = try await client.roundTrip(.status)
+                #expect(response == .status(sampleReport))
+                #expect(server.requests == [.status])
+            }
+        }
     }
 
-    @Test func deliversDaemonErrors() throws {
+    @Test func coalescesConcurrentConnectionSetup() async throws {
+        let dir = try ShortTempDir(prefix: "sock")
+        defer { dir.tearDown() }
+        let server = FakeSocketServer(path: dir.socketPath("s.sock"), reply: .respond(.ok))
+        try await server.withStarted { () async throws in
+            try await withCLIDaemonClient(path: server.path, timeoutSeconds: 2) { client in
+                async let first = client.roundTrip(.ping)
+                async let second = client.roundTrip(.ping)
+                let firstResponse = try await first
+                let secondResponse = try await second
+                #expect(firstResponse == .ok)
+                #expect(secondResponse == .ok)
+                #expect(server.requests == [.ping, .ping])
+            }
+        }
+    }
+
+    @Test func callerCancellationDoesNotPoisonTheSession() async throws {
+        let dir = try ShortTempDir(prefix: "sock")
+        defer { dir.tearDown() }
+        let server = FakeSocketServer(
+            path: dir.socketPath("s.sock"),
+            reply: .cancellableStatusThenRespond(.ok)
+        )
+        try await server.withStarted { () async throws in
+            try await withCLIDaemonClient(path: server.path, timeoutSeconds: 2) { client in
+                let pending = Task { try await client.roundTrip(.status) }
+                await server.waitForRequest(.status)
+                #expect(server.requests.contains(.status))
+                pending.cancel()
+                await #expect(throws: CancellationError.self) {
+                    try await pending.value
+                }
+                let response = try await client.roundTrip(.ping)
+                #expect(response == .ok)
+            }
+        }
+    }
+
+    @Test func deliversDaemonErrors() async throws {
         let dir = try ShortTempDir(prefix: "sock")
         defer { dir.tearDown() }
         let server = FakeSocketServer(
             path: dir.socketPath("s.sock"),
             reply: .respond(.error(message: "no hold with key k"))
         )
-        try server.start()
-        defer { server.stop() }
-        let client = CLIDaemonClient(path: server.path, timeoutSeconds: 2)
-        #expect(try client.roundTrip(.release(key: "k")) == .error(message: "no hold with key k"))
-        #expect(server.requests == [.release(key: "k")])
-    }
-
-    @Test func failsToConnectWithoutServer() throws {
-        let dir = try ShortTempDir(prefix: "sock")
-        defer { dir.tearDown() }
-        let client = CLIDaemonClient(path: dir.socketPath("missing.sock"), timeoutSeconds: 1)
-        do {
-            _ = try client.roundTrip(.ping)
-            Issue.record("expected a transport error")
-        } catch let error as DaemonClientError {
-            guard case .transport = error else {
-                Issue.record("expected transport, got \(error)")
-                return
+        try await server.withStarted { () async throws in
+            try await withCLIDaemonClient(path: server.path, timeoutSeconds: 2) { client in
+                let response = try await client.roundTrip(.release(key: "k"))
+                #expect(response == .error(message: "no hold with key k"))
+                #expect(server.requests == [.release(key: "k")])
             }
-        } catch {
-            Issue.record("expected DaemonClientError, got \(error)")
         }
     }
 
-    @Test func timesOutOnSilentServer() throws {
+    @Test func failsToConnectWithoutServer() async throws {
+        let dir = try ShortTempDir(prefix: "sock")
+        defer { dir.tearDown() }
+        try await withCLIDaemonClient(path: dir.socketPath("missing.sock"), timeoutSeconds: 1) { client in
+            do {
+                _ = try await client.roundTrip(.ping)
+                Issue.record("expected a transport error")
+            } catch let error as DaemonClientError {
+                guard case .transport = error else {
+                    Issue.record("expected transport, got \(error)")
+                    return
+                }
+            } catch {
+                Issue.record("expected DaemonClientError, got \(error)")
+            }
+        }
+    }
+
+    @Test func timesOutOnSilentServer() async throws {
         let dir = try ShortTempDir(prefix: "sock")
         defer { dir.tearDown() }
         let server = FakeSocketServer(path: dir.socketPath("s.sock"), reply: .silence)
-        try server.start()
-        defer { server.stop() }
-        let client = CLIDaemonClient(path: server.path, timeoutSeconds: 1)
-        #expect(throws: DaemonClientError.timedOut) {
-            try client.roundTrip(.status)
+        try await server.withStarted { () async throws in
+            try await withCLIDaemonClient(path: server.path, timeoutSeconds: 1) { client in
+                _ = await #expect(throws: DaemonClientError.timedOut) {
+                    try await client.roundTrip(.status)
+                }
+            }
         }
     }
 
-    @Test func rejectsBuildMismatchBeforeDispatch() throws {
+    @Test func rejectsBuildMismatchBeforeDispatch() async throws {
         let dir = try ShortTempDir(prefix: "sock")
         defer { dir.tearDown() }
         let server = FakeSocketServer(
@@ -96,53 +144,56 @@ struct CLIDaemonClientTests {
             build: "cc-vigil.cli.v2",
             reply: .respond(.ok)
         )
-        try server.start()
-        defer { server.stop() }
-        let client = CLIDaemonClient(path: server.path, timeoutSeconds: 5)
-        do {
-            _ = try client.roundTrip(.ping)
-            Issue.record("expected a build rejection")
-        } catch let error as DaemonClientError {
-            guard case .rejected = error else {
-                Issue.record("expected rejected, got \(error)")
-                return
+        try await server.withStarted {
+            try await withCLIDaemonClient(path: server.path, timeoutSeconds: 5) { client in
+                do {
+                    _ = try await client.roundTrip(.ping)
+                    Issue.record("expected a build rejection")
+                } catch let error as DaemonClientError {
+                    guard case .rejected = error else {
+                        Issue.record("expected rejected, got \(error)")
+                        return
+                    }
+                }
+                #expect(server.requests.isEmpty)
             }
         }
-        #expect(server.requests.isEmpty)
     }
 
-    @Test func reportsMalformedReplies() throws {
+    @Test func reportsMalformedReplies() async throws {
         let dir = try ShortTempDir(prefix: "sock")
         defer { dir.tearDown() }
         let junk = Data(#"{"result":"bogus"}"#.utf8)
         let server = FakeSocketServer(path: dir.socketPath("s.sock"), reply: .raw(junk))
-        try server.start()
-        defer { server.stop() }
-        let client = CLIDaemonClient(path: server.path, timeoutSeconds: 1)
-        do {
-            _ = try client.roundTrip(.status)
-            Issue.record("expected a malformedReply error")
-        } catch let error as DaemonClientError {
-            guard case .malformedReply = error else {
-                Issue.record("expected malformedReply, got \(error)")
-                return
+        try await server.withStarted {
+            try await withCLIDaemonClient(path: server.path, timeoutSeconds: 1) { client in
+                do {
+                    _ = try await client.roundTrip(.status)
+                    Issue.record("expected a malformedReply error")
+                } catch let error as DaemonClientError {
+                    guard case .malformedReply = error else {
+                        Issue.record("expected malformedReply, got \(error)")
+                        return
+                    }
+                }
             }
         }
     }
 
-    @Test func rejectsOverlongSocketPaths() {
+    @Test func rejectsOverlongSocketPaths() async throws {
         let path = "/tmp/" + String(repeating: "x", count: 120) + ".sock"
-        let client = CLIDaemonClient(path: path, timeoutSeconds: 1)
-        do {
-            _ = try client.roundTrip(.ping)
-            Issue.record("expected a transport error")
-        } catch let error as DaemonClientError {
-            guard case .transport = error else {
+        try await withCLIDaemonClient(path: path, timeoutSeconds: 1) { client in
+            do {
+                _ = try await client.roundTrip(.ping)
+                Issue.record("expected a transport error")
+            } catch let error as DaemonClientError {
+                guard case .transport = error else {
+                    Issue.record("expected transport, got \(error)")
+                    return
+                }
+            } catch {
                 Issue.record("expected transport, got \(error)")
-                return
             }
-        } catch {
-            Issue.record("expected transport, got \(error)")
         }
     }
 }

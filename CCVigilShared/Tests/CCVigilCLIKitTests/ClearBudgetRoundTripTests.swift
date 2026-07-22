@@ -11,7 +11,7 @@ import Testing
     #expect(CLIDaemonClient.timeout(for: .ping) == CLIDaemonClient.defaultTimeoutSeconds)
 }
 
-@Test func clearConfirmsWhenTheDaemonRepliesPastTheDefaultTimeout() throws {
+@Test func clearConfirmsWhenTheDaemonRepliesPastTheDefaultTimeout() async throws {
     let dir = try ShortTempDir(prefix: "sock")
     defer { dir.tearDown() }
     // A slow pmset makes the daemon confirm the clear only after several seconds;
@@ -22,9 +22,14 @@ import Testing
         path: dir.socketPath("s.sock"),
         reply: .delayedRespond(.ok, afterSeconds: stall)
     )
-    try server.start()
-    defer { server.stop() }
-    let client = CLIDaemonClient(path: server.path, timeoutSeconds: CLIDaemonClient.timeout(for: .clear))
-    #expect(try client.roundTrip(.clear) == .ok)
-    #expect(server.requests == [.clear])
+    try await server.withStarted { () async throws in
+        try await withCLIDaemonClient(
+            path: server.path,
+            timeoutSeconds: CLIDaemonClient.timeout(for: .clear)
+        ) { client in
+            let response = try await client.roundTrip(.clear)
+            #expect(response == .ok)
+            #expect(server.requests == [.clear])
+        }
+    }
 }

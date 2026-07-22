@@ -4,7 +4,7 @@ import CCVigilShared
 import CCVigilTransport
 import Foundation
 
-public struct VigilCLI: ParsableCommand {
+public struct VigilCLI: AsyncParsableCommand {
     public static let configuration = CommandConfiguration(
         commandName: "cc-vigil",
         abstract: "Keep the Mac awake while Claude Code agents are truly working.",

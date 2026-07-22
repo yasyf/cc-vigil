@@ -6,6 +6,17 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.4.2] - 2026-07-22
+
+### Changed
+
+- CLI daemon operations are asynchronous end to end. The synchronous
+  semaphore bridge is gone, so executor pressure cannot deadlock commands or
+  strand persistent sessions during teardown.
+- Daemon connections, frame writes, and server shutdown use daemonkit's async
+  transport boundary, with coalesced connection setup and cancellation that
+  does not poison a shared persistent session.
+
 ## [0.4.1] - 2026-07-21
 
 ### Fixed
@@ -307,7 +318,8 @@ Claude Code shipped as a signed and notarized menu-bar app.
   installer state machine, symlinker, away digest) lives in the new
   CCVigilAppKit library under `swift test`.
 
-[Unreleased]: https://github.com/yasyf/cc-vigil/compare/v0.4.1...HEAD
+[Unreleased]: https://github.com/yasyf/cc-vigil/compare/v0.4.2...HEAD
+[0.4.2]: https://github.com/yasyf/cc-vigil/compare/v0.4.1...v0.4.2
 [0.4.1]: https://github.com/yasyf/cc-vigil/compare/v0.4.0...v0.4.1
 [0.4.0]: https://github.com/yasyf/cc-vigil/compare/v0.3.0...v0.4.0
 [0.3.0]: https://github.com/yasyf/cc-vigil/compare/v0.2.0...v0.3.0

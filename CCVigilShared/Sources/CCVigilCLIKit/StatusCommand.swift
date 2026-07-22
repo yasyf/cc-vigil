@@ -3,7 +3,7 @@ import CCVigilShared
 import CCVigilTransport
 import Foundation
 
-public struct StatusCommand: ParsableCommand {
+public struct StatusCommand: AsyncParsableCommand {
     public static let configuration = CommandConfiguration(
         commandName: "status",
         abstract: "Show what the daemon is doing and why."
@@ -16,8 +16,8 @@ public struct StatusCommand: ParsableCommand {
 
     public init() {}
 
-    public func run() throws {
-        let reply = try socketOptions.client.roundTrip(.status)
+    public func run() async throws {
+        let reply = try await socketOptions.client.roundTrip(.status)
         guard case let .status(report) = reply else {
             if case let .error(message) = reply {
                 throw CLIError.daemonError(message)

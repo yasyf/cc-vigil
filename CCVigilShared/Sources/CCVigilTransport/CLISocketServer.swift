@@ -28,14 +28,14 @@ public final class CLISocketServer: @unchecked Sendable {
         }
     }
 
-    public func start() throws {
-        try server.start()
+    public func start() async throws {
+        try await server.start()
         let path = socketPath
         cliSocketLog.info("CLI socket listening at \(path, privacy: .public)")
     }
 
-    public func stop() {
-        server.stop()
+    public func stop() async {
+        await server.stop()
     }
 
     private static func respond(

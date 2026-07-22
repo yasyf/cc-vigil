@@ -8,11 +8,11 @@ private enum Step: Equatable {
     case send
 }
 
-@Test func printsHoldKeyBeforeSendingThenPropagatesTimeout() throws {
+@Test func printsHoldKeyBeforeSendingThenPropagatesTimeout() async throws {
     var steps: [Step] = []
     var thrown: (any Error)?
     do {
-        try HoldCommand.perform(
+        try await HoldCommand.perform(
             key: "cli-test01",
             reason: "why",
             ttlSeconds: 3600,
@@ -34,9 +34,9 @@ private enum Step: Equatable {
     #expect(try String(describing: #require(thrown)) == "daemon request timed out")
 }
 
-@Test func printsHoldKeyBeforeAConfirmedSend() throws {
+@Test func printsHoldKeyBeforeAConfirmedSend() async throws {
     var steps: [Step] = []
-    try HoldCommand.perform(
+    try await HoldCommand.perform(
         key: "cli-ok",
         reason: "why",
         ttlSeconds: 60,

@@ -3,7 +3,7 @@ import CCVigilShared
 import CCVigilTransport
 import Foundation
 
-public struct HoldCommand: ParsableCommand {
+public struct HoldCommand: AsyncParsableCommand {
     public static let configuration = CommandConfiguration(
         commandName: "hold",
         abstract: "Hold the system awake for a fixed duration, no oracle required."
@@ -26,17 +26,17 @@ public struct HoldCommand: ParsableCommand {
         key: String,
         reason: String,
         ttlSeconds: Int,
-        send: (WireRequest) throws -> WireResponse,
+        send: (WireRequest) async throws -> WireResponse,
         emit: (String) -> Void
-    ) throws {
+    ) async throws {
         emit("holding \(key) for \(Durations.text(forSeconds: ttlSeconds)); release with: cc-vigil release \(key)")
-        try requireOK(send(.hold(key: key, reason: reason, ttlSeconds: ttlSeconds, pid: nil)))
+        try await requireOK(send(.hold(key: key, reason: reason, ttlSeconds: ttlSeconds, pid: nil)))
     }
 
-    public func run() throws {
+    public func run() async throws {
         let ttlSeconds = try min(Durations.seconds(from: duration), Hold.maxTTLSeconds)
         let holdKey = key ?? "cli-\(UUID().uuidString.prefix(8).lowercased())"
-        try Self.perform(
+        try await Self.perform(
             key: holdKey,
             reason: reason,
             ttlSeconds: ttlSeconds,
@@ -46,7 +46,7 @@ public struct HoldCommand: ParsableCommand {
     }
 }
 
-public struct ReleaseCommand: ParsableCommand {
+public struct ReleaseCommand: AsyncParsableCommand {
     public static let configuration = CommandConfiguration(
         commandName: "release",
         abstract: "Release a hold."
@@ -59,8 +59,8 @@ public struct ReleaseCommand: ParsableCommand {
 
     public init() {}
 
-    public func run() throws {
-        try requireOK(socketOptions.client.roundTrip(.release(key: key)))
+    public func run() async throws {
+        try await requireOK(socketOptions.client.roundTrip(.release(key: key)))
         print("released \(key)")
     }
 }

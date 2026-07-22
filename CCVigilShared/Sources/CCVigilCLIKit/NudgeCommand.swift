@@ -3,7 +3,7 @@ import CCVigilShared
 import CCVigilTransport
 import Foundation
 
-public struct NudgeCommand: ParsableCommand {
+public struct NudgeCommand: AsyncParsableCommand {
     public static let configuration = CommandConfiguration(
         commandName: "nudge",
         abstract: "Forward a Claude Code hook event to the daemon (always exits 0)."
@@ -15,7 +15,7 @@ public struct NudgeCommand: ParsableCommand {
 
     /// The hook path must never break a Claude Code session: any failure is
     /// one stderr warning and a clean exit 0.
-    public func run() {
+    public func run() async {
         do {
             let input = try NudgeStdin.read(from: .standardInput)
             let payload = try HookInput.nudgePayload(
@@ -23,7 +23,7 @@ public struct NudgeCommand: ParsableCommand {
                 claudePid: ClaudeAncestry.nearestClaudeAncestorOfSelf(),
                 transcriptsRoot: Self.relocatedTranscriptsRoot(environment: ProcessInfo.processInfo.environment)
             )
-            _ = try socketOptions.client.roundTrip(.nudge(payload))
+            _ = try await socketOptions.client.roundTrip(.nudge(payload))
         } catch {
             let warning = "cc-vigil: nudge failed: \(String(describing: error))\n"
             FileHandle.standardError.write(Data(warning.utf8))

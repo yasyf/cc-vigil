@@ -75,28 +75,45 @@ private final class DaemonHarness {
         try process.run()
     }
 
-    func waitUntilReady() throws {
-        let client = CLIDaemonClient(path: socketPath, timeoutSeconds: 1)
-        for _ in 0 ..< 100 {
-            if let reply = try? client.roundTrip(.ping), reply == .ok {
-                return
+    func waitUntilReady() async throws {
+        try await withCLIDaemonClient(path: socketPath, timeoutSeconds: 1) { client in
+            for _ in 0 ..< 100 {
+                if let reply = try? await client.roundTrip(.ping), reply == .ok {
+                    return
+                }
+                try await Task.sleep(for: .milliseconds(100))
             }
-            usleep(100_000)
+            let stderr = stderrBuffer.withLock { String(data: $0, encoding: .utf8) ?? "" }
+            throw HarnessError.daemonNeverReady(stderr: stderr)
         }
-        let stderr = stderrBuffer.withLock { String(data: $0, encoding: .utf8) ?? "" }
-        throw HarnessError.daemonNeverReady(stderr: stderr)
     }
 
-    func stop() {
-        process.terminate()
-        process.waitUntilExit()
+    func stop() async {
+        if process.isRunning {
+            await withCheckedContinuation { continuation in
+                process.terminationHandler = { _ in continuation.resume() }
+                process.terminate()
+            }
+        }
         supportDir.tearDown()
         transcriptsRoot.tearDown()
     }
 }
 
-private func status(_ client: CLIDaemonClient) throws -> StatusReport {
-    let reply = try client.roundTrip(.status)
+private func withDaemonHarness<Result>(_ body: (DaemonHarness) async throws -> Result) async throws -> Result {
+    let harness = try DaemonHarness()
+    do {
+        let result = try await body(harness)
+        await harness.stop()
+        return result
+    } catch {
+        await harness.stop()
+        throw error
+    }
+}
+
+private func status(_ client: CLIDaemonClient) async throws -> StatusReport {
+    let reply = try await client.roundTrip(.status)
     guard case let .status(report) = reply else {
         throw HarnessError.statusNeverMatched(last: nil)
     }
@@ -106,15 +123,15 @@ private func status(_ client: CLIDaemonClient) throws -> StatusReport {
 private func pollStatus(
     _ client: CLIDaemonClient,
     until predicate: (StatusReport) -> Bool
-) throws -> StatusReport {
+) async throws -> StatusReport {
     var last: StatusReport?
     for _ in 0 ..< 100 {
-        let report = try status(client)
+        let report = try await status(client)
         last = report
         if predicate(report) {
             return report
         }
-        usleep(100_000)
+        try await Task.sleep(for: .milliseconds(100))
     }
     throw HarnessError.statusNeverMatched(last: last)
 }
@@ -154,148 +171,170 @@ private func run(_ executable: URL, _ arguments: [String], stdin: Data? = nil) t
     )
 }
 
-@Suite(.enabled(if: builtProductsExist, "xcodebuild products missing; run the Debug build first"))
+@Suite(.serialized, .enabled(if: builtProductsExist, "xcodebuild products missing; run the Debug build first"))
 struct DaemonRoundTripTests {
-    @Test func wireOpsRoundTripAgainstTheRealDaemon() throws {
-        let harness = try DaemonHarness()
-        defer { harness.stop() }
-        try harness.waitUntilReady()
-        let client = CLIDaemonClient(path: harness.socketPath)
+    @Test func wireOpsRoundTripAgainstTheRealDaemon() async throws {
+        try await withDaemonHarness { harness in
+            try await harness.waitUntilReady()
+            try await withCLIDaemonClient(
+                path: harness.socketPath,
+                timeoutSeconds: CLIDaemonClient.defaultTimeoutSeconds
+            ) { client in
+                let initial = try await status(client)
+                #expect(initial.shouldBlock == false)
+                #expect(initial.blockApplied == false)
+                #expect(initial.helper == .dryRun)
+                #expect(initial.holds.isEmpty)
+                #expect(initial.pausedUntil == nil)
 
-        let initial = try status(client)
-        #expect(initial.shouldBlock == false)
-        #expect(initial.blockApplied == false)
-        #expect(initial.helper == .dryRun)
-        #expect(initial.holds.isEmpty)
-        #expect(initial.pausedUntil == nil)
+                #expect(try await client.roundTrip(
+                    .hold(key: "itest", reason: "integration", ttlSeconds: 120, pid: nil)
+                ) == .ok)
+                let held = try await pollStatus(client) { $0.shouldBlock && $0.blockApplied }
+                #expect(held.holds.map(\.key) == ["itest"])
+                #expect(held.holds.first?.reason == "integration")
+                #expect(held.holds.first?.ttlSeconds == 120)
 
-        #expect(try client.roundTrip(
-            .hold(key: "itest", reason: "integration", ttlSeconds: 120, pid: nil)
-        ) == .ok)
-        let held = try pollStatus(client) { $0.shouldBlock && $0.blockApplied }
-        #expect(held.holds.map(\.key) == ["itest"])
-        #expect(held.holds.first?.reason == "integration")
-        #expect(held.holds.first?.ttlSeconds == 120)
+                #expect(try await client.roundTrip(
+                    .nudge(NudgePayload(sessionId: "itest-session", hookEvent: "UserPromptSubmit"))
+                ) == .ok)
 
-        #expect(try client.roundTrip(
-            .nudge(NudgePayload(sessionId: "itest-session", hookEvent: "UserPromptSubmit"))
-        ) == .ok)
+                #expect(try await client.roundTrip(.pause(seconds: 300)) == .ok)
+                let paused = try await pollStatus(client) { !$0.shouldBlock }
+                #expect(paused.pausedUntil != nil)
+                #expect(try await client.roundTrip(.pause(seconds: 0)) == .ok)
+                let resumed = try await pollStatus(client) { $0.shouldBlock }
+                #expect(resumed.pausedUntil == nil)
 
-        #expect(try client.roundTrip(.pause(seconds: 300)) == .ok)
-        let paused = try pollStatus(client) { !$0.shouldBlock }
-        #expect(paused.pausedUntil != nil)
-        #expect(try client.roundTrip(.pause(seconds: 0)) == .ok)
-        let resumed = try pollStatus(client) { $0.shouldBlock }
-        #expect(resumed.pausedUntil == nil)
+                #expect(try await client.roundTrip(.release(key: "itest")) == .ok)
+                let released = try await pollStatus(client) { !$0.shouldBlock }
+                #expect(released.holds.isEmpty)
+                guard case let .error(message) = try await client.roundTrip(.release(key: "itest")) else {
+                    Issue.record("second release should be an error")
+                    return
+                }
+                #expect(message.contains("itest"))
 
-        #expect(try client.roundTrip(.release(key: "itest")) == .ok)
-        let released = try pollStatus(client) { !$0.shouldBlock }
-        #expect(released.holds.isEmpty)
-        guard case let .error(message) = try client.roundTrip(.release(key: "itest")) else {
-            Issue.record("second release should be an error")
-            return
+                // The uninstall clear latches the daemon fail-open; a passive status poll
+                // does not lift that latch, so the block stays cleared.
+                #expect(try await client.roundTrip(.clear) == .ok)
+                let cleared = try await status(client)
+                #expect(cleared.shouldBlock == false)
+                #expect(cleared.blockApplied == false)
+
+                // A subsequent control op is traffic that proves this was not an
+                // uninstall: it un-latches the teardown, so the hold re-blocks.
+                #expect(try await client.roundTrip(
+                    .hold(key: "post-clear", reason: "re-block", ttlSeconds: 120, pid: nil)
+                ) == .ok)
+                let reblocked = try await pollStatus(client) {
+                    $0.blockApplied && $0.holds.contains { $0.key == "post-clear" }
+                }
+                #expect(reblocked.shouldBlock)
+                #expect(reblocked.blockApplied)
+            }
         }
-        #expect(message.contains("itest"))
-
-        // The uninstall clear latches the daemon fail-open; a passive status poll
-        // does not lift that latch, so the block stays cleared.
-        #expect(try client.roundTrip(.clear) == .ok)
-        let cleared = try status(client)
-        #expect(cleared.shouldBlock == false)
-        #expect(cleared.blockApplied == false)
-
-        // A subsequent control op is traffic that proves this was not an
-        // uninstall: it un-latches the teardown, so the hold re-blocks.
-        #expect(try client.roundTrip(
-            .hold(key: "post-clear", reason: "re-block", ttlSeconds: 120, pid: nil)
-        ) == .ok)
-        let reblocked = try pollStatus(client) { $0.blockApplied && $0.holds.contains { $0.key == "post-clear" } }
-        #expect(reblocked.shouldBlock)
-        #expect(reblocked.blockApplied)
     }
 
-    @Test func cliBinaryDrivesTheDaemon() throws {
-        let harness = try DaemonHarness()
-        defer { harness.stop() }
-        try harness.waitUntilReady()
-        let client = CLIDaemonClient(path: harness.socketPath)
-        let socketArguments = ["--socket", harness.socketPath]
+    @Test func cliBinaryDrivesTheDaemon() async throws {
+        try await withDaemonHarness { harness in
+            try await harness.waitUntilReady()
+            try await withCLIDaemonClient(
+                path: harness.socketPath,
+                timeoutSeconds: CLIDaemonClient.defaultTimeoutSeconds
+            ) { client in
+                let socketArguments = ["--socket", harness.socketPath]
 
-        let jsonRun = try run(cliBinary, ["status", "--json"] + socketArguments)
-        #expect(jsonRun.status == 0)
-        let report = try WireCodec.decodePayload(
-            StatusReport.self,
-            from: Data(jsonRun.stdout.utf8)
-        )
-        #expect(report.helper == .dryRun)
+                let jsonRun = try run(cliBinary, ["status", "--json"] + socketArguments)
+                #expect(jsonRun.status == 0)
+                guard jsonRun.stdout.hasPrefix("{") else {
+                    Issue.record("unexpected JSON stdout: \(String(reflecting: jsonRun.stdout))")
+                    return
+                }
+                let report = try WireCodec.decodePayload(
+                    StatusReport.self,
+                    from: Data(jsonRun.stdout.utf8)
+                )
+                #expect(report.helper == .dryRun)
 
-        let humanRun = try run(cliBinary, ["status"] + socketArguments)
-        #expect(humanRun.status == 0)
-        #expect(humanRun.stdout.contains("helper: dry-run"))
-        #expect(humanRun.stdout.contains("blocking: no"))
+                let humanRun = try run(cliBinary, ["status"] + socketArguments)
+                #expect(humanRun.status == 0)
+                #expect(humanRun.stdout.contains("helper: dry-run"))
+                #expect(humanRun.stdout.contains("blocking: no"))
 
-        let holdRun = try run(
-            cliBinary,
-            ["hold", "--for", "2m", "--reason", "cli test", "--key", "cli-itest"] + socketArguments
-        )
-        #expect(holdRun.status == 0)
-        #expect(holdRun.stdout.contains("holding cli-itest for 2m"))
-        _ = try pollStatus(client) { report in report.holds.contains { $0.key == "cli-itest" } }
+                let holdRun = try run(
+                    cliBinary,
+                    ["hold", "--for", "2m", "--reason", "cli test", "--key", "cli-itest"] + socketArguments
+                )
+                #expect(holdRun.status == 0)
+                #expect(holdRun.stdout.contains("holding cli-itest for 2m"))
+                _ = try await pollStatus(client) { report in report.holds.contains { $0.key == "cli-itest" } }
 
-        let releaseRun = try run(cliBinary, ["release", "cli-itest"] + socketArguments)
-        #expect(releaseRun.status == 0)
-        #expect(releaseRun.stdout.contains("released cli-itest"))
-        _ = try pollStatus(client) { $0.holds.isEmpty }
+                let releaseRun = try run(cliBinary, ["release", "cli-itest"] + socketArguments)
+                #expect(releaseRun.status == 0)
+                #expect(releaseRun.stdout.contains("released cli-itest"))
+                _ = try await pollStatus(client) { $0.holds.isEmpty }
 
-        let nudgeInput = Data(#"{"session_id":"it","hook_event_name":"Stop"}"#.utf8)
-        let nudgeRun = try run(cliBinary, ["nudge"] + socketArguments, stdin: nudgeInput)
-        #expect(nudgeRun.status == 0)
-        #expect(nudgeRun.stdout.isEmpty)
-        #expect(nudgeRun.stderr.isEmpty)
+                let nudgeInput = Data(#"{"session_id":"it","hook_event_name":"Stop"}"#.utf8)
+                let nudgeRun = try run(cliBinary, ["nudge"] + socketArguments, stdin: nudgeInput)
+                #expect(nudgeRun.status == 0)
+                #expect(nudgeRun.stdout.isEmpty)
+                #expect(nudgeRun.stderr.isEmpty)
 
-        let logRun = try run(cliBinary, ["log", "--support-dir", harness.supportDir.url.path])
-        #expect(logRun.status == 0)
-        #expect(logRun.stdout.contains("daemon-started"))
+                let logRun = try run(cliBinary, ["log", "--support-dir", harness.supportDir.url.path])
+                #expect(logRun.status == 0)
+                #expect(logRun.stdout.contains("daemon-started"))
 
-        let versionRun = try run(cliBinary, ["version"])
-        #expect(versionRun.status == 0)
-        #expect(versionRun.stdout.hasPrefix("cc-vigil "))
-        #expect(versionRun.stdout.contains("."))
-    }
-
-    @Test func multiplexesNudgesOnOneSession() throws {
-        let harness = try DaemonHarness()
-        defer { harness.stop() }
-        try harness.waitUntilReady()
-        let client = CLIDaemonClient(path: harness.socketPath)
-
-        for index in 0 ..< 8 {
-            #expect(try client.roundTrip(
-                .nudge(NudgePayload(sessionId: "session-\(index)", hookEvent: "PreToolUse"))
-            ) == .ok)
+                let versionRun = try run(cliBinary, ["version"])
+                #expect(versionRun.status == 0)
+                #expect(versionRun.stdout.hasPrefix("cc-vigil "))
+                #expect(versionRun.stdout.contains("."))
+            }
         }
-
-        #expect(try client.roundTrip(.ping) == .ok)
     }
 
-    @Test func registersARelocatedTranscriptsRootCarriedByANudge() throws {
-        let harness = try DaemonHarness()
-        defer { harness.stop() }
-        try harness.waitUntilReady()
-        let client = CLIDaemonClient(path: harness.socketPath)
-        let stateURL = SupportPaths(directory: harness.supportDir.url).stateURL
+    @Test func multiplexesNudgesOnOneSession() async throws {
+        try await withDaemonHarness { harness in
+            try await harness.waitUntilReady()
+            try await withCLIDaemonClient(
+                path: harness.socketPath,
+                timeoutSeconds: CLIDaemonClient.defaultTimeoutSeconds
+            ) { client in
+                for index in 0 ..< 8 {
+                    let response = try await client.roundTrip(
+                        .nudge(NudgePayload(sessionId: "session-\(index)", hookEvent: "PreToolUse"))
+                    )
+                    #expect(response == .ok)
+                }
 
-        let relocated = try ShortTempDir(prefix: "vigil-cfg")
-        defer { relocated.tearDown() }
-        let missing = relocated.url.appendingPathComponent("nope", isDirectory: true).path
+                let response = try await client.roundTrip(.ping)
+                #expect(response == .ok)
+            }
+        }
+    }
 
-        // A nonexistent dir is never registered; an existing one is, once.
-        #expect(try client.roundTrip(.nudge(NudgePayload(transcriptsRoot: missing))) == .ok)
-        #expect(try roots(from: stateURL) == [])
-        #expect(try client.roundTrip(.nudge(NudgePayload(transcriptsRoot: relocated.url.path))) == .ok)
-        #expect(try roots(from: stateURL) == [relocated.url.path])
-        #expect(try client.roundTrip(.nudge(NudgePayload(transcriptsRoot: relocated.url.path))) == .ok)
-        #expect(try roots(from: stateURL) == [relocated.url.path])
+    @Test func registersARelocatedTranscriptsRootCarriedByANudge() async throws {
+        try await withDaemonHarness { harness in
+            try await harness.waitUntilReady()
+            try await withCLIDaemonClient(
+                path: harness.socketPath,
+                timeoutSeconds: CLIDaemonClient.defaultTimeoutSeconds
+            ) { client in
+                let stateURL = SupportPaths(directory: harness.supportDir.url).stateURL
+
+                let relocated = try ShortTempDir(prefix: "vigil-cfg")
+                defer { relocated.tearDown() }
+                let missing = relocated.url.appendingPathComponent("nope", isDirectory: true).path
+
+                // A nonexistent dir is never registered; an existing one is, once.
+                #expect(try await client.roundTrip(.nudge(NudgePayload(transcriptsRoot: missing))) == .ok)
+                #expect(try roots(from: stateURL) == [])
+                #expect(try await client.roundTrip(.nudge(NudgePayload(transcriptsRoot: relocated.url.path))) == .ok)
+                #expect(try roots(from: stateURL) == [relocated.url.path])
+                #expect(try await client.roundTrip(.nudge(NudgePayload(transcriptsRoot: relocated.url.path))) == .ok)
+                #expect(try roots(from: stateURL) == [relocated.url.path])
+            }
+        }
     }
 
     private func roots(from stateURL: URL) throws -> [String] {

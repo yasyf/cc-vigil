@@ -150,7 +150,7 @@ enum DaemonMain {
             await core.handle(request)
         }
         do {
-            try socketServer.start()
+            try await socketServer.start()
         } catch {
             die("CLI socket failed to start at \(paths.socketPath): \(error)")
         }

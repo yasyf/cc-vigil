@@ -2,7 +2,7 @@ import ArgumentParser
 import CCVigilShared
 import CCVigilTransport
 
-public struct PauseCommand: ParsableCommand {
+public struct PauseCommand: AsyncParsableCommand {
     public static let configuration = CommandConfiguration(
         commandName: "pause",
         abstract: "Pause all blocking for a fixed duration."
@@ -19,14 +19,14 @@ public struct PauseCommand: ParsableCommand {
         try min(Durations.seconds(from: duration), Hold.maxTTLSeconds)
     }
 
-    public func run() throws {
+    public func run() async throws {
         let seconds = try Self.clampedSeconds(from: duration)
-        try requireOK(socketOptions.client.roundTrip(.pause(seconds: seconds)))
+        try await requireOK(socketOptions.client.roundTrip(.pause(seconds: seconds)))
         print("paused for \(Durations.text(forSeconds: seconds))")
     }
 }
 
-public struct ResumeCommand: ParsableCommand {
+public struct ResumeCommand: AsyncParsableCommand {
     public static let configuration = CommandConfiguration(
         commandName: "resume",
         abstract: "Resume blocking after a pause."
@@ -36,8 +36,8 @@ public struct ResumeCommand: ParsableCommand {
 
     public init() {}
 
-    public func run() throws {
-        try requireOK(socketOptions.client.roundTrip(.pause(seconds: 0)))
+    public func run() async throws {
+        try await requireOK(socketOptions.client.roundTrip(.pause(seconds: 0)))
         print("resumed")
     }
 }
