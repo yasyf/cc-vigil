@@ -20,7 +20,7 @@ let package = Package(
             url: "https://github.com/yasyf/cc-transcript.git",
             revision: "dadcda0b98d7abaaf30d38677cb762ffa0ec72eb"
         ),
-        .package(url: "https://github.com/yasyf/daemonkit.git", exact: "0.3.2"),
+        .package(url: "https://github.com/yasyf/daemonkit.git", exact: "0.4.1"),
         .package(url: "https://github.com/apple/swift-argument-parser.git", from: "1.5.0"),
     ],
     targets: [
