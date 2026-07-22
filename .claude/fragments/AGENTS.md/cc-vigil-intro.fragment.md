@@ -20,8 +20,9 @@ cc-vigil/
 ├── CCVigilShared/      # local SPM package all four targets depend on
 │   ├── Sources/
 │   │   ├── CCVigilShared/    # pure policy core — oracle state, block policy, cutouts, holds, wire, hook installer
-│   │   ├── CCVigilDaemonKit/ # daemon adapters — cc-transcript FFI (the pin lives in Package.swift), scanner, event log, state, support paths
-│   │   ├── CCVigilCLIKit/    # CLI subcommands, socket client, renderers
+│   │   ├── CCVigilRuntime/   # product runtime — cc-transcript FFI, scanner, event log, state, support paths
+│   │   ├── CCVigilTransport/ # daemonkit-backed persistent CLI session client and server
+│   │   ├── CCVigilCLIKit/    # CLI subcommands and renderers
 │   │   └── CCVigilAppKit/    # app policy — status view model, installer state machine, away digest
 │   └── Tests/          # one Swift Testing target per library, fixtures included
 ├── AGENTS.md           # This file — shared conventions

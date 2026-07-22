@@ -1,7 +1,7 @@
 import AppKit
 import CCVigilAppKit
 import CCVigilCLIKit
-import CCVigilDaemonKit
+import CCVigilRuntime
 import CCVigilShared
 import Foundation
 import Observation

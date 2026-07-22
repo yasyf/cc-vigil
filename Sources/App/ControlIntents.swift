@@ -1,6 +1,6 @@
 import AppIntents
 import CCVigilAppKit
-import CCVigilDaemonKit
+import CCVigilRuntime
 import CCVigilShared
 import Foundation
 

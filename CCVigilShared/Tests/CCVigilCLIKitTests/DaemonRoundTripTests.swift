@@ -1,6 +1,7 @@
 import CCVigilCLIKit
-import CCVigilDaemonKit
+import CCVigilRuntime
 import CCVigilShared
+import CCVigilTransport
 import Darwin
 import Foundation
 import os
@@ -75,7 +76,7 @@ private final class DaemonHarness {
     }
 
     func waitUntilReady() throws {
-        let client = SocketClient(path: socketPath, timeoutSeconds: 1)
+        let client = CLIDaemonClient(path: socketPath, timeoutSeconds: 1)
         for _ in 0 ..< 100 {
             if let reply = try? client.roundTrip(.ping), reply == .ok {
                 return
@@ -94,7 +95,7 @@ private final class DaemonHarness {
     }
 }
 
-private func status(_ client: SocketClient) throws -> StatusReport {
+private func status(_ client: CLIDaemonClient) throws -> StatusReport {
     let reply = try client.roundTrip(.status)
     guard case let .status(report) = reply else {
         throw HarnessError.statusNeverMatched(last: nil)
@@ -103,7 +104,7 @@ private func status(_ client: SocketClient) throws -> StatusReport {
 }
 
 private func pollStatus(
-    _ client: SocketClient,
+    _ client: CLIDaemonClient,
     until predicate: (StatusReport) -> Bool
 ) throws -> StatusReport {
     var last: StatusReport?
@@ -125,6 +126,7 @@ private struct RunResult {
 }
 
 private func run(_ executable: URL, _ arguments: [String], stdin: Data? = nil) throws -> RunResult {
+    Darwin.signal(SIGPIPE, SIG_IGN)
     let process = Process()
     process.executableURL = executable
     process.arguments = arguments
@@ -158,7 +160,7 @@ struct DaemonRoundTripTests {
         let harness = try DaemonHarness()
         defer { harness.stop() }
         try harness.waitUntilReady()
-        let client = SocketClient(path: harness.socketPath)
+        let client = CLIDaemonClient(path: harness.socketPath)
 
         let initial = try status(client)
         #expect(initial.shouldBlock == false)
@@ -216,7 +218,7 @@ struct DaemonRoundTripTests {
         let harness = try DaemonHarness()
         defer { harness.stop() }
         try harness.waitUntilReady()
-        let client = SocketClient(path: harness.socketPath)
+        let client = CLIDaemonClient(path: harness.socketPath)
         let socketArguments = ["--socket", harness.socketPath]
 
         let jsonRun = try run(cliBinary, ["status", "--json"] + socketArguments)
@@ -261,20 +263,18 @@ struct DaemonRoundTripTests {
         #expect(versionRun.stdout.contains("."))
     }
 
-    @Test func survivesFireAndForgetNudgePeers() throws {
+    @Test func multiplexesNudgesOnOneSession() throws {
         let harness = try DaemonHarness()
         defer { harness.stop() }
         try harness.waitUntilReady()
-        let client = SocketClient(path: harness.socketPath)
+        let client = CLIDaemonClient(path: harness.socketPath)
 
-        // The nudge hook fires and forgets: it writes the frame and closes before
-        // the daemon replies. The daemon's reply to the gone peer must return
-        // EPIPE, not raise SIGPIPE and terminate the process (exit 141).
         for index in 0 ..< 8 {
-            try client.send(.nudge(NudgePayload(sessionId: "sigpipe-\(index)", hookEvent: "PreToolUse")))
+            #expect(try client.roundTrip(
+                .nudge(NudgePayload(sessionId: "session-\(index)", hookEvent: "PreToolUse"))
+            ) == .ok)
         }
 
-        // A fresh round-trip proves the daemon is still alive.
         #expect(try client.roundTrip(.ping) == .ok)
     }
 
@@ -282,7 +282,7 @@ struct DaemonRoundTripTests {
         let harness = try DaemonHarness()
         defer { harness.stop() }
         try harness.waitUntilReady()
-        let client = SocketClient(path: harness.socketPath)
+        let client = CLIDaemonClient(path: harness.socketPath)
         let stateURL = SupportPaths(directory: harness.supportDir.url).stateURL
 
         let relocated = try ShortTempDir(prefix: "vigil-cfg")

@@ -6,6 +6,20 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Changed
+- CLI, app-control, and daemon traffic now use daemonkit's persistent,
+  multiplexed v1 session transport with exact build equality, bounded admission,
+  request deadlines, and same-user peer trust. Hook nudges wait for an explicit
+  acknowledgement instead of abandoning a one-shot reply.
+- The minimum supported system is macOS 15, matching daemonkit's Swift
+  transport boundary.
+
+### Removed
+- The private four-byte socket framing, one-connection client/server, connection
+  throttle, and misleading `CCVigilDaemonKit` module were deleted. Product
+  runtime utilities now live in `CCVigilRuntime`; transport lives in
+  `CCVigilTransport`.
+
 ## [0.3.0] - 2026-07-10
 
 ### Added

@@ -29,7 +29,7 @@ Clamshell sleep ignores ordinary idle assertions — shutting a MacBook normally
 brew install yasyf/tap/cc-vigil
 ```
 
-Apple Silicon, macOS 14 or newer. Launch cc-vigil once afterward to run first-run setup.
+Apple Silicon, macOS 15 or newer. Launch cc-vigil once afterward to run first-run setup.
 
 ### Build from source
 

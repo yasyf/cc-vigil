@@ -1,12 +1,21 @@
 {
-  "originHash" : "ef3d3230cb0651b4989e28e31cccd581c44183cdc586a1b03c99a8af0e193eed",
+  "originHash" : "3d85d398fa9faa3524224dfead85d68673c9d60654083de6688508f5cc6bb3b2",
   "pins" : [
     {
       "identity" : "cc-transcript",
       "kind" : "remoteSourceControl",
       "location" : "https://github.com/yasyf/cc-transcript.git",
       "state" : {
-        "revision" : "e04b44cdb5596e84940027abeab6dc6842e89f5b"
+        "revision" : "dadcda0b98d7abaaf30d38677cb762ffa0ec72eb"
+      }
+    },
+    {
+      "identity" : "daemonkit",
+      "kind" : "remoteSourceControl",
+      "location" : "https://github.com/yasyf/daemonkit.git",
+      "state" : {
+        "revision" : "3e6b473f4298fb1e708045d6e7f9212f007db11f",
+        "version" : "0.3.2"
       }
     },
     {

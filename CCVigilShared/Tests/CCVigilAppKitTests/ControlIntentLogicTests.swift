@@ -1,6 +1,7 @@
 import CCVigilAppKit
 import CCVigilCLIKit
 import CCVigilShared
+import CCVigilTransport
 import Foundation
 import Testing
 
@@ -120,9 +121,9 @@ func holdDialogFormatsTheDuration(ttlSeconds: Int, expected: String) {
 
 @Test func anUnreachableDaemonSurfacesTheClientError() async {
     let dialog = await ControlIntentLogic.runHold(ttlSeconds: 60) { _ in
-        throw SocketClientError.connectFailed(errno: 2)
+        throw DaemonClientError.transport("connect errno 2")
     }
-    #expect(dialog == "cannot connect to the daemon socket (errno 2); is CCVigilDaemon running?")
+    #expect(dialog == "daemon session failed: connect errno 2")
 }
 
 @Test func statusRendersTheHumanSummary() async {
@@ -138,7 +139,7 @@ func holdDialogFormatsTheDuration(ttlSeconds: Int, expected: String) {
 
 @Test func statusOnAnUnreachableDaemonSurfacesTheClientError() async {
     let dialog = await ControlIntentLogic.runStatus(now: now) { _ in
-        throw SocketClientError.connectFailed(errno: 61)
+        throw DaemonClientError.transport("connect errno 61")
     }
-    #expect(dialog.contains("is CCVigilDaemon running?"))
+    #expect(dialog == "daemon session failed: connect errno 61")
 }

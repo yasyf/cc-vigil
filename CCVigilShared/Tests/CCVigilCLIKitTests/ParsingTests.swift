@@ -1,6 +1,6 @@
 import ArgumentParser
 import CCVigilCLIKit
-import CCVigilDaemonKit
+import CCVigilRuntime
 import Testing
 
 @Test func parsesHold() throws {

@@ -13,11 +13,11 @@ name: CCVigil
 options:
   bundleIdPrefix: dev.yasyf
   deploymentTarget:
-    macOS: "14.0"
+    macOS: "15.0"
   createIntermediateGroups: true
 
 # cc-transcript is pinned inside CCVigilShared/Package.swift (the
-# CCVigilDaemonKit target's dependency) so `swift test` and the Xcode build
+# CCVigilRuntime target's dependency) so `swift test` and the Xcode build
 # share one pin; bump it there.
 packages:
   CCVigilShared:
@@ -95,10 +95,12 @@ targets:
         product: CCVigilShared
       - package: CCVigilShared
         product: CCVigilAppKit
-      # CCVigilCLIKit supplies SocketClient: menu pause/hold ops ride the
-      # daemon's CLI socket (the app XPC channel is read-only status).
+      # Menu pause/hold ops ride the daemon's persistent CLI session; the app
+      # XPC channel is read-only status.
       - package: CCVigilShared
         product: CCVigilCLIKit
+      - package: CCVigilShared
+        product: CCVigilTransport
       - target: CCVigilDaemon
         embed: true
         codeSign: true
@@ -157,7 +159,9 @@ targets:
       - package: CCVigilShared
         product: CCVigilShared
       - package: CCVigilShared
-        product: CCVigilDaemonKit
+        product: CCVigilRuntime
+      - package: CCVigilShared
+        product: CCVigilTransport
 
   CCVigilHelper:
     # LaunchDaemon (system, root): privileged clamshell/power work lands here.

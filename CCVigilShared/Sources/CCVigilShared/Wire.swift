@@ -1,35 +1,8 @@
 import Foundation
 
-public enum WireError: Error, Equatable {
-    case payloadTooLarge(bytes: Int)
-}
-
-public enum WireFrame {
-    public static let headerBytes = 4
-    public static let maxPayloadBytes = 16 * 1024 * 1024
-
-    public static func encode(payload: Data) throws -> Data {
-        guard payload.count <= maxPayloadBytes else {
-            throw WireError.payloadTooLarge(bytes: payload.count)
-        }
-        var frame = Data(capacity: headerBytes + payload.count)
-        withUnsafeBytes(of: UInt32(payload.count).bigEndian) { frame.append(contentsOf: $0) }
-        frame.append(payload)
-        return frame
-    }
-
-    public static func decode(buffer: Data) throws -> (payload: Data, consumed: Int)? {
-        guard buffer.count >= headerBytes else { return nil }
-        let length = buffer.prefix(headerBytes).reduce(into: UInt32(0)) { $0 = $0 << 8 | UInt32($1) }
-        guard Int(length) <= maxPayloadBytes else {
-            throw WireError.payloadTooLarge(bytes: Int(length))
-        }
-        let total = headerBytes + Int(length)
-        guard buffer.count >= total else { return nil }
-        let start = buffer.index(buffer.startIndex, offsetBy: headerBytes)
-        let end = buffer.index(buffer.startIndex, offsetBy: total)
-        return (Data(buffer[start ..< end]), total)
-    }
+public enum WireProtocol {
+    public static let build = "cc-vigil.cli.v1"
+    public static let operation = "cc-vigil.cli.call"
 }
 
 public struct NudgePayload: Codable, Equatable, Sendable {
@@ -229,18 +202,6 @@ extension WireResponse: Codable {
 }
 
 public enum WireCodec {
-    public static func encodeFrame(_ value: some Encodable) throws -> Data {
-        try WireFrame.encode(payload: encodePayload(value))
-    }
-
-    public static func decodeFrame<T: Decodable>(
-        _ type: T.Type,
-        from buffer: Data
-    ) throws -> (value: T, consumed: Int)? {
-        guard let (payload, consumed) = try WireFrame.decode(buffer: buffer) else { return nil }
-        return try (decodePayload(type, from: payload), consumed)
-    }
-
     public static func encodePayload(_ value: some Encodable) throws -> Data {
         try makeEncoder().encode(value)
     }

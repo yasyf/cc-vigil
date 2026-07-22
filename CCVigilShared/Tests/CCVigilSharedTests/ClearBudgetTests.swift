@@ -8,12 +8,7 @@ import Testing
     #expect(ClearBudget.daemonWorstCaseSeconds == 60)
 }
 
-@Test func socketHandlerBudgetExceedsTheDaemonWorstCase() {
-    #expect(ClearBudget.socketHandlerSeconds > ClearBudget.daemonWorstCaseSeconds)
-    #expect(ClearBudget.socketHandlerSeconds == 70)
-}
-
-@Test func clientBudgetExceedsTheSocketHandlerBudget() {
-    #expect(Double(ClearBudget.clientSeconds) > ClearBudget.socketHandlerSeconds)
+@Test func clientBudgetExceedsTheDaemonWorstCase() {
+    #expect(Double(ClearBudget.clientSeconds) > ClearBudget.daemonWorstCaseSeconds)
     #expect(ClearBudget.clientSeconds == 80)
 }

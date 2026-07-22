@@ -1,5 +1,5 @@
 import ArgumentParser
-import CCVigilDaemonKit
+import CCVigilRuntime
 import Darwin
 import Foundation
 

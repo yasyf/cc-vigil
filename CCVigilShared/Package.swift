@@ -4,10 +4,11 @@ import PackageDescription
 
 let package = Package(
     name: "CCVigilShared",
-    platforms: [.macOS(.v14)],
+    platforms: [.macOS(.v15)],
     products: [
         .library(name: "CCVigilShared", targets: ["CCVigilShared"]),
-        .library(name: "CCVigilDaemonKit", targets: ["CCVigilDaemonKit"]),
+        .library(name: "CCVigilRuntime", targets: ["CCVigilRuntime"]),
+        .library(name: "CCVigilTransport", targets: ["CCVigilTransport"]),
         .library(name: "CCVigilCLIKit", targets: ["CCVigilCLIKit"]),
         .library(name: "CCVigilAppKit", targets: ["CCVigilAppKit"]),
     ],
@@ -17,24 +18,33 @@ let package = Package(
         // updating this pin (the single pin for the whole project).
         .package(
             url: "https://github.com/yasyf/cc-transcript.git",
-            revision: "e04b44cdb5596e84940027abeab6dc6842e89f5b"
+            revision: "dadcda0b98d7abaaf30d38677cb762ffa0ec72eb"
         ),
+        .package(url: "https://github.com/yasyf/daemonkit.git", exact: "0.3.2"),
         .package(url: "https://github.com/apple/swift-argument-parser.git", from: "1.5.0"),
     ],
     targets: [
         .target(name: "CCVigilShared"),
         .target(
-            name: "CCVigilDaemonKit",
+            name: "CCVigilRuntime",
             dependencies: [
                 "CCVigilShared",
                 .product(name: "CCTranscript", package: "cc-transcript"),
             ]
         ),
         .target(
+            name: "CCVigilTransport",
+            dependencies: [
+                "CCVigilShared",
+                .product(name: "DaemonKit", package: "daemonkit"),
+            ]
+        ),
+        .target(
             name: "CCVigilCLIKit",
             dependencies: [
                 "CCVigilShared",
-                "CCVigilDaemonKit",
+                "CCVigilRuntime",
+                "CCVigilTransport",
                 .product(name: "ArgumentParser", package: "swift-argument-parser"),
             ]
         ),
@@ -42,17 +52,27 @@ let package = Package(
             name: "CCVigilAppKit",
             dependencies: [
                 "CCVigilShared",
-                "CCVigilDaemonKit",
+                "CCVigilRuntime",
                 "CCVigilCLIKit",
             ]
         ),
         .testTarget(name: "CCVigilSharedTests", dependencies: ["CCVigilShared"]),
         .testTarget(
-            name: "CCVigilDaemonKitTests",
-            dependencies: ["CCVigilDaemonKit"],
+            name: "CCVigilRuntimeTests",
+            dependencies: ["CCVigilRuntime"],
             resources: [.copy("Fixtures")]
         ),
-        .testTarget(name: "CCVigilCLIKitTests", dependencies: ["CCVigilCLIKit"]),
-        .testTarget(name: "CCVigilAppKitTests", dependencies: ["CCVigilAppKit", "CCVigilCLIKit"]),
+        .testTarget(
+            name: "CCVigilCLIKitTests",
+            dependencies: [
+                "CCVigilCLIKit",
+                "CCVigilTransport",
+                .product(name: "DaemonKit", package: "daemonkit"),
+            ]
+        ),
+        .testTarget(
+            name: "CCVigilAppKitTests",
+            dependencies: ["CCVigilAppKit", "CCVigilCLIKit", "CCVigilTransport"]
+        ),
     ]
 )

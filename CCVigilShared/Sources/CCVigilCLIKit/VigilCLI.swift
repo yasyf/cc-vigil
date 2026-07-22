@@ -1,6 +1,7 @@
 import ArgumentParser
-import CCVigilDaemonKit
+import CCVigilRuntime
 import CCVigilShared
+import CCVigilTransport
 import Foundation
 
 public struct VigilCLI: ParsableCommand {
@@ -30,8 +31,8 @@ public struct SocketOptions: ParsableArguments {
 
     public init() {}
 
-    public var client: SocketClient {
-        SocketClient(path: socket)
+    public var client: CLIDaemonClient {
+        CLIDaemonClient(path: socket)
     }
 }
 

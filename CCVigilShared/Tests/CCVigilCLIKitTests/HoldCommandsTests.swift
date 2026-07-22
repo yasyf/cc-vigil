@@ -1,5 +1,6 @@
 import CCVigilCLIKit
 import CCVigilShared
+import CCVigilTransport
 import Testing
 
 private enum Step: Equatable {
@@ -17,7 +18,7 @@ private enum Step: Equatable {
             ttlSeconds: 3600,
             send: { _ in
                 steps.append(.send)
-                throw SocketClientError.replyTimedOut(afterSeconds: 5)
+                throw DaemonClientError.timedOut
             },
             emit: { steps.append(.emit($0)) }
         )
@@ -29,8 +30,8 @@ private enum Step: Equatable {
         .emit("holding cli-test01 for 1h; release with: cc-vigil release cli-test01"),
         .send,
     ])
-    #expect(thrown as? SocketClientError == .replyTimedOut(afterSeconds: 5))
-    #expect(try String(describing: #require(thrown)).contains("may still have applied"))
+    #expect(thrown as? DaemonClientError == .timedOut)
+    #expect(try String(describing: #require(thrown)) == "daemon request timed out")
 }
 
 @Test func printsHoldKeyBeforeAConfirmedSend() throws {

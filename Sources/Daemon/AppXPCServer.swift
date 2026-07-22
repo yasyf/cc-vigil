@@ -1,4 +1,4 @@
-import CCVigilDaemonKit
+import CCVigilRuntime
 import CCVigilShared
 import Foundation
 import os

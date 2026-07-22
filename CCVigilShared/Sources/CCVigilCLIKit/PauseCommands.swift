@@ -1,5 +1,6 @@
 import ArgumentParser
 import CCVigilShared
+import CCVigilTransport
 
 public struct PauseCommand: ParsableCommand {
     public static let configuration = CommandConfiguration(

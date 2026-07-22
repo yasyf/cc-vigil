@@ -1,20 +1,7 @@
 import CCVigilShared
-import Darwin
+import DaemonKit
 import Foundation
 import os
-
-/// The in-process fake servers reply to fire-and-forget peers exactly like the
-/// production daemon, so a reply write to a peer that already closed would raise
-/// SIGPIPE and kill the swiftpm test process (exit signal 13). Install the same
-/// process-wide disposition DaemonMain sets at startup — once, lazily, gated on
-/// the first fake server start — so the fake-server tests stay deterministic.
-let ignoreSigPipeForTests: Void = {
-    _ = signal(SIGPIPE, SIG_IGN)
-}()
-
-enum FakeServerError: Error {
-    case syscall(String, Int32)
-}
 
 struct ShortTempDir {
     let url: URL
@@ -51,14 +38,35 @@ final class FakeSocketServer: @unchecked Sendable {
     let path: String
     private let reply: FakeReply
     private let recorded = OSAllocatedUnfairLock<[WireRequest]>(initialState: [])
-    private let parked = OSAllocatedUnfairLock<[Int32]>(initialState: [])
-    private var listenDescriptor: Int32 = -1
-    private let queue = DispatchQueue(label: "fake-socket-server")
+    private let server: SocketServer
 
-    init(path: String, reply: FakeReply) {
-        precondition(path.utf8.count < 104, "socket path too long for sun_path: \(path)")
+    init(path: String, build: String = WireProtocol.build, reply: FakeReply) {
         self.path = path
         self.reply = reply
+        server = SocketServer(
+            path: path,
+            build: build,
+            trust: .sameEffectiveUser
+        ) { [recorded] request in
+            guard request.operation == WireProtocol.operation,
+                  let decoded = try? WireCodec.decodePayload(WireRequest.self, from: request.payload)
+            else {
+                return .terminal(SocketTerminal(rejected: true, reason: "invalid test request"))
+            }
+            recorded.withLock { $0.append(decoded) }
+            switch reply {
+            case let .respond(response):
+                return Self.terminal(response)
+            case let .delayedRespond(response, afterSeconds):
+                try? await Task.sleep(for: .seconds(afterSeconds))
+                return Self.terminal(response)
+            case let .raw(payload):
+                return .terminal(SocketTerminal(payload: payload))
+            case .silence:
+                try? await Task.sleep(for: .seconds(60))
+                return .terminal(SocketTerminal(error: "wire: request canceled"))
+            }
+        }
     }
 
     var requests: [WireRequest] {
@@ -66,96 +74,18 @@ final class FakeSocketServer: @unchecked Sendable {
     }
 
     func start() throws {
-        _ = ignoreSigPipeForTests
-        let descriptor = socket(AF_UNIX, SOCK_STREAM, 0)
-        guard descriptor >= 0 else { throw FakeServerError.syscall("socket", errno) }
-        unlink(path)
-        var address = sockaddr_un()
-        address.sun_family = sa_family_t(AF_UNIX)
-        let pathBytes = Array(path.utf8)
-        withUnsafeMutableBytes(of: &address.sun_path) { sunPath in
-            sunPath.copyBytes(from: pathBytes)
-        }
-        let bound = withUnsafePointer(to: &address) { pointer in
-            pointer.withMemoryRebound(to: sockaddr.self, capacity: 1) { generic in
-                bind(descriptor, generic, socklen_t(MemoryLayout<sockaddr_un>.size))
-            }
-        }
-        guard bound == 0, listen(descriptor, 8) == 0 else {
-            close(descriptor)
-            throw FakeServerError.syscall("bind/listen", errno)
-        }
-        listenDescriptor = descriptor
-        queue.async { [self] in acceptLoop() }
+        try server.start()
     }
 
     func stop() {
-        close(listenDescriptor)
-        parked.withLock { descriptors in
-            for descriptor in descriptors {
-                close(descriptor)
-            }
-            descriptors.removeAll()
-        }
-        unlink(path)
+        server.stop()
     }
 
-    private func acceptLoop() {
-        while true {
-            let client = accept(listenDescriptor, nil, nil)
-            guard client >= 0 else { return }
-            serve(client)
-        }
-    }
-
-    private func serve(_ descriptor: Int32) {
-        // Mirror the production daemon: a reply written to a fire-and-forget peer
-        // that already closed must return EPIPE, not raise SIGPIPE in the tests.
-        var noSigPipe: Int32 = 1
-        setsockopt(descriptor, SOL_SOCKET, SO_NOSIGPIPE, &noSigPipe, socklen_t(MemoryLayout<Int32>.size))
-        var buffer = Data()
-        var chunk = [UInt8](repeating: 0, count: 65536)
-        while true {
-            if let (request, _) = try? WireCodec.decodeFrame(WireRequest.self, from: buffer) {
-                recorded.withLock { $0.append(request) }
-                break
-            }
-            let received = recv(descriptor, &chunk, chunk.count, 0)
-            guard received > 0 else {
-                close(descriptor)
-                return
-            }
-            buffer.append(contentsOf: chunk[0 ..< received])
-        }
-        switch reply {
-        case let .respond(response):
-            if let frame = try? WireCodec.encodeFrame(response) {
-                sendAll(frame, to: descriptor)
-            }
-            close(descriptor)
-        case let .delayedRespond(response, afterSeconds):
-            Thread.sleep(forTimeInterval: afterSeconds)
-            if let frame = try? WireCodec.encodeFrame(response) {
-                sendAll(frame, to: descriptor)
-            }
-            close(descriptor)
-        case let .raw(data):
-            sendAll(data, to: descriptor)
-            close(descriptor)
-        case .silence:
-            parked.withLock { $0.append(descriptor) }
-        }
-    }
-
-    private func sendAll(_ data: Data, to descriptor: Int32) {
-        data.withUnsafeBytes { (raw: UnsafeRawBufferPointer) in
-            guard let base = raw.baseAddress else { return }
-            var offset = 0
-            while offset < raw.count {
-                let written = write(descriptor, base + offset, raw.count - offset)
-                guard written > 0 else { return }
-                offset += written
-            }
+    private static func terminal(_ response: WireResponse) -> SocketResponse {
+        do {
+            return try .terminal(SocketTerminal(payload: WireCodec.encodePayload(response)))
+        } catch {
+            return .terminal(SocketTerminal(error: String(describing: error)))
         }
     }
 }

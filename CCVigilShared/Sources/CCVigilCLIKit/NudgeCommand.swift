@@ -1,5 +1,6 @@
 import ArgumentParser
 import CCVigilShared
+import CCVigilTransport
 import Foundation
 
 public struct NudgeCommand: ParsableCommand {
@@ -22,7 +23,7 @@ public struct NudgeCommand: ParsableCommand {
                 claudePid: ClaudeAncestry.nearestClaudeAncestorOfSelf(),
                 transcriptsRoot: Self.relocatedTranscriptsRoot(environment: ProcessInfo.processInfo.environment)
             )
-            try socketOptions.client.send(.nudge(payload))
+            _ = try socketOptions.client.roundTrip(.nudge(payload))
         } catch {
             let warning = "cc-vigil: nudge failed: \(String(describing: error))\n"
             FileHandle.standardError.write(Data(warning.utf8))

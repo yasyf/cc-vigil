@@ -2,15 +2,6 @@ public enum CutoutKind: String, Codable, Equatable, Sendable, CaseIterable {
     case battery
     case thermal
     case lowPower = "low-power"
-    case unknown
-
-    /// A raw value from a newer peer that names a cutout this build does not know
-    /// decodes to `.unknown` instead of failing the whole report, mirroring the
-    /// `HelperLink.unknown` sentinel. Every decode site rides this one initializer.
-    public init(from decoder: Decoder) throws {
-        let raw = try decoder.singleValueContainer().decode(String.self)
-        self = CutoutKind(rawValue: raw) ?? .unknown
-    }
 
     public var rejectionReason: String {
         "cutout-\(rawValue)"

@@ -1,6 +1,7 @@
 import CCVigilAppKit
 import CCVigilCLIKit
 import CCVigilShared
+import CCVigilTransport
 import Foundation
 
 enum Uninstaller {
@@ -18,8 +19,8 @@ enum Uninstaller {
                                 return .confirmed
                             }
                             return .wedged
-                        } catch let error as SocketClientError {
-                            if case .replyTimedOut = error {
+                        } catch let error as DaemonClientError {
+                            if case .timedOut = error {
                                 return .timedOut
                             }
                             return .unreachable

@@ -1,5 +1,6 @@
 import ArgumentParser
 import CCVigilShared
+import CCVigilTransport
 import Foundation
 
 public struct StatusCommand: ParsableCommand {

@@ -1,18 +1,17 @@
 import CCVigilCLIKit
 import CCVigilShared
-import Dispatch
+import CCVigilTransport
 
 /// Control operations ride the daemon's CLI socket; the app XPC channel is
 /// read-only status.
 struct DaemonCommands {
-    let socketPath: String
+    private let client: CLIDaemonClient
+
+    init(socketPath: String) {
+        client = CLIDaemonClient(path: socketPath)
+    }
 
     func roundTrip(_ request: WireRequest) async throws -> WireResponse {
-        let client = SocketClient(path: socketPath, timeoutSeconds: SocketClient.timeout(for: request))
-        return try await withCheckedThrowingContinuation { continuation in
-            DispatchQueue.global(qos: .userInitiated).async {
-                continuation.resume(with: Result { try client.roundTrip(request) })
-            }
-        }
+        try await client.roundTrip(request)
     }
 }
