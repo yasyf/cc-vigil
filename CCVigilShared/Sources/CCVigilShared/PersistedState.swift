@@ -25,12 +25,17 @@ public struct PersistedState: Codable, Equatable, Sendable {
     }
 
     public init(from decoder: Decoder) throws {
+        try requireExactKeys(
+            from: decoder,
+            required: ["alertedCutouts", "holds", "nextAlertId", "recentAlerts", "registeredRoots"],
+            optional: ["pausedUntil"]
+        )
         let container = try decoder.container(keyedBy: CodingKeys.self)
         holds = try container.decode([Hold].self, forKey: .holds)
         pausedUntil = try container.decodeIfPresent(Date.self, forKey: .pausedUntil)
-        registeredRoots = try container.decodeIfPresent([String].self, forKey: .registeredRoots) ?? []
-        nextAlertId = try container.decodeIfPresent(Int64.self, forKey: .nextAlertId) ?? 1
-        recentAlerts = try container.decodeIfPresent([SleepAlert].self, forKey: .recentAlerts) ?? []
-        alertedCutouts = try container.decodeIfPresent(Set<CutoutKind>.self, forKey: .alertedCutouts) ?? []
+        registeredRoots = try container.decode([String].self, forKey: .registeredRoots)
+        nextAlertId = try container.decode(Int64.self, forKey: .nextAlertId)
+        recentAlerts = try container.decode([SleepAlert].self, forKey: .recentAlerts)
+        alertedCutouts = try container.decode(Set<CutoutKind>.self, forKey: .alertedCutouts)
     }
 }

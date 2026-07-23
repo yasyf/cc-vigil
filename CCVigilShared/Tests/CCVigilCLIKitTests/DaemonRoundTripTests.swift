@@ -338,8 +338,7 @@ struct DaemonRoundTripTests {
     }
 
     private func roots(from stateURL: URL) throws -> [String] {
-        guard FileManager.default.fileExists(atPath: stateURL.path) else { return [] }
-        return try WireCodec.decodePayload(PersistedState.self, from: Data(contentsOf: stateURL)).registeredRoots
+        try StateStore.load(url: stateURL)?.registeredRoots ?? []
     }
 
     @Test func nudgeFailsOpenWithoutADaemon() throws {

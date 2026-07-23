@@ -22,11 +22,24 @@ public struct Hold: Codable, Equatable, Sendable {
     }
 
     public init(from decoder: Decoder) throws {
+        try requireExactKeys(
+            from: decoder,
+            required: ["createdAt", "key", "reason", "ttlSeconds"],
+            optional: ["pid"]
+        )
         let container = try decoder.container(keyedBy: CodingKeys.self)
+        let ttlSeconds = try container.decode(Int.self, forKey: .ttlSeconds)
+        guard 1 ... Self.maxTTLSeconds ~= ttlSeconds else {
+            throw DecodingError.dataCorruptedError(
+                forKey: .ttlSeconds,
+                in: container,
+                debugDescription: "ttlSeconds must be in 1...\(Self.maxTTLSeconds)"
+            )
+        }
         try self.init(
             key: container.decode(String.self, forKey: .key),
             reason: container.decode(String.self, forKey: .reason),
-            ttlSeconds: container.decode(Int.self, forKey: .ttlSeconds),
+            ttlSeconds: ttlSeconds,
             createdAt: container.decode(Date.self, forKey: .createdAt),
             pid: container.decodeIfPresent(Int32.self, forKey: .pid)
         )

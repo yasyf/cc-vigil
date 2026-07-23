@@ -83,31 +83,35 @@ public struct VigilConfig: Codable, Equatable, Sendable {
     }
 
     public init(from decoder: Decoder) throws {
+        try requireExactKeys(
+            from: decoder,
+            required: [
+                "activityWindowSeconds",
+                "batteryFloorPercent",
+                "hideMenuBarExtra",
+                "lowPowerCutout",
+                "notifyOnCutout",
+                "notifyOnRelease",
+                "pendingAsyncMaxAgeSeconds",
+                "pollBlockingSeconds",
+                "pollIdleSeconds",
+                "thermalCutoutCelsius",
+                "transcriptsRoots",
+            ]
+        )
         let container = try decoder.container(keyedBy: CodingKeys.self)
         try self.init(
-            batteryFloorPercent: container
-                .decodeIfPresent(Int.self, forKey: .batteryFloorPercent) ?? Self.default.batteryFloorPercent,
-            thermalCutoutCelsius: container
-                .decodeIfPresent(Double.self, forKey: .thermalCutoutCelsius) ?? Self.default.thermalCutoutCelsius,
-            activityWindowSeconds: container
-                .decodeIfPresent(Int.self, forKey: .activityWindowSeconds) ?? Self.default.activityWindowSeconds,
-            pendingAsyncMaxAgeSeconds: container
-                .decodeIfPresent(Int.self, forKey: .pendingAsyncMaxAgeSeconds) ?? Self.default
-                .pendingAsyncMaxAgeSeconds,
-            pollBlockingSeconds: container
-                .decodeIfPresent(Int.self, forKey: .pollBlockingSeconds) ?? Self.default.pollBlockingSeconds,
-            pollIdleSeconds: container
-                .decodeIfPresent(Int.self, forKey: .pollIdleSeconds) ?? Self.default.pollIdleSeconds,
-            hideMenuBarExtra: container
-                .decodeIfPresent(Bool.self, forKey: .hideMenuBarExtra) ?? Self.default.hideMenuBarExtra,
-            notifyOnRelease: container
-                .decodeIfPresent(Bool.self, forKey: .notifyOnRelease) ?? Self.default.notifyOnRelease,
-            notifyOnCutout: container
-                .decodeIfPresent(Bool.self, forKey: .notifyOnCutout) ?? Self.default.notifyOnCutout,
-            lowPowerCutout: container
-                .decodeIfPresent(Bool.self, forKey: .lowPowerCutout) ?? Self.default.lowPowerCutout,
-            transcriptsRoots: container
-                .decodeIfPresent([String].self, forKey: .transcriptsRoots) ?? Self.default.transcriptsRoots
+            batteryFloorPercent: container.decode(Int.self, forKey: .batteryFloorPercent),
+            thermalCutoutCelsius: container.decode(Double.self, forKey: .thermalCutoutCelsius),
+            activityWindowSeconds: container.decode(Int.self, forKey: .activityWindowSeconds),
+            pendingAsyncMaxAgeSeconds: container.decode(Int.self, forKey: .pendingAsyncMaxAgeSeconds),
+            pollBlockingSeconds: container.decode(Int.self, forKey: .pollBlockingSeconds),
+            pollIdleSeconds: container.decode(Int.self, forKey: .pollIdleSeconds),
+            hideMenuBarExtra: container.decode(Bool.self, forKey: .hideMenuBarExtra),
+            notifyOnRelease: container.decode(Bool.self, forKey: .notifyOnRelease),
+            notifyOnCutout: container.decode(Bool.self, forKey: .notifyOnCutout),
+            lowPowerCutout: container.decode(Bool.self, forKey: .lowPowerCutout),
+            transcriptsRoots: container.decode([String].self, forKey: .transcriptsRoots)
         )
     }
 }

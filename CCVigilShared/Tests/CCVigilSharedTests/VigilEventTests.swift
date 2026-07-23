@@ -141,26 +141,6 @@ func roundTrips(record: EventRecord) throws {
     #expect(try WireCodec.decodePayload(PersistedState.self, from: Data(encoded.utf8)) == state)
 }
 
-@Test func persistedStateDecodesLegacyJSONWithoutRegisteredRoots() throws {
-    let legacy = "{\"holds\":[],\"pausedUntil\":1767323100}"
-    let decoded = try WireCodec.decodePayload(PersistedState.self, from: Data(legacy.utf8))
-    #expect(decoded == PersistedState(holds: [], pausedUntil: Date(timeIntervalSince1970: 1_767_323_100)))
-    #expect(decoded.registeredRoots == [])
-}
-
-@Test func persistedStateDecodesLegacyJSONWithoutAlertFields() throws {
-    let legacy = "{\"holds\":[],\"pausedUntil\":1767323100}"
-    let decoded = try WireCodec.decodePayload(PersistedState.self, from: Data(legacy.utf8))
-    #expect(decoded.nextAlertId == 1)
-    #expect(decoded.recentAlerts == [])
-}
-
-@Test func persistedStateDecodesLegacyJSONWithoutAlertedCutouts() throws {
-    let legacy = "{\"holds\":[],\"pausedUntil\":1767323100}"
-    let decoded = try WireCodec.decodePayload(PersistedState.self, from: Data(legacy.utf8))
-    #expect(decoded.alertedCutouts == [])
-}
-
 @Test func persistedStateRoundTripsAlertFields() throws {
     let state = PersistedState(
         holds: [],

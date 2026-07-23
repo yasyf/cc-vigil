@@ -6,6 +6,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.6.0] - 2026-07-23
+
+### Changed
+
+- `config.json` and `state.json` now use exact, fingerprinted v1 envelopes.
+  Present files must match the complete current schema; old, partial, malformed,
+  or extra-field shapes fail closed without quarantine, repair, or migration.
+
 ## [0.5.0] - 2026-07-23
 
 ### Changed

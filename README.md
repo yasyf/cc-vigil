@@ -91,9 +91,9 @@ One machine, one `disablesleep`. The clamshell guard is a machine-wide `pmset` s
 
 ## Configuration
 
-Config lives at `~/Library/Application Support/cc-vigil/config.json`. Missing keys take defaults, invalid values fail at startup, and the Settings window edits the same file.
+Config lives at `~/Library/Application Support/cc-vigil/config.json`. When the file is absent, cc-vigil uses its built-in defaults. Once present, it is an exact v1 envelope containing `schema`, `schemaVersion`, `schemaFingerprint`, and `payload`; every payload key in the table below is required and extra keys are rejected. A stale, partial, or malformed file fails startup instead of being repaired. The Settings window writes the complete current envelope.
 
-| Key                        | Default | Range | Meaning                                                                                                              |
+| Payload key                | Default | Range | Meaning                                                                                                              |
 | -------------------------- | ------- | ----- | -------------------------------------------------------------------------------------------------------------------- |
 | `batteryFloorPercent`      | `20`    | 5–50  | On battery below this charge, release the block and latch until charge reaches floor+5 or AC power returns.           |
 | `thermalCutoutCelsius`     | `80`    | 70–95 | Lid closed, blocking, and at or above this temperature: release and latch until 5°C cooler or the lid opens.          |

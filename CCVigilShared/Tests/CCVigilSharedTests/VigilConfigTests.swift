@@ -2,6 +2,15 @@ import CCVigilShared
 import Foundation
 import Testing
 
+private func configJSON(overrides: [String: Any] = [:]) throws -> Data {
+    let encoded = try JSONEncoder().encode(VigilConfig.default)
+    var object = try #require(JSONSerialization.jsonObject(with: encoded) as? [String: Any])
+    for (key, value) in overrides {
+        object[key] = value
+    }
+    return try JSONSerialization.data(withJSONObject: object, options: [.sortedKeys])
+}
+
 @Test func configDefaults() {
     let config = VigilConfig.default
     #expect(config.batteryFloorPercent == 20)
@@ -16,15 +25,9 @@ import Testing
     #expect(config.lowPowerCutout == true)
 }
 
-@Test func configDecodesLegacyJSONWithoutLowPowerCutoutDefaultsToTrue() throws {
-    let json = Data(#"{"batteryFloorPercent": 30}"#.utf8)
-    let config = try JSONDecoder().decode(VigilConfig.self, from: json)
-    #expect(config.lowPowerCutout == true)
-}
-
 @Test(arguments: [true, false])
 func configDecodesExplicitLowPowerCutout(value: Bool) throws {
-    let json = Data(#"{"lowPowerCutout": \#(value)}"#.utf8)
+    let json = try configJSON(overrides: ["lowPowerCutout": value])
     let config = try JSONDecoder().decode(VigilConfig.self, from: json)
     #expect(config.lowPowerCutout == value)
 }
@@ -55,10 +58,15 @@ func configAcceptsPollCadenceBoundaries(pollBlocking: Int, pollIdle: Int) throws
     ("pollIdleSeconds", "-1", "1-600"),
     ("pollIdleSeconds", "601", "1-600"),
 ])
-func configRejectsOutOfRange(field: String, value: String, allowed: String) {
-    let json = Data(#"{"\#(field)": \#(value)}"#.utf8)
+func configRejectsOutOfRange(field: String, value: String, allowed: String) throws {
+    let override: Any = if value.contains(".") {
+        try #require(Double(value))
+    } else {
+        try #require(Int(value))
+    }
     #expect(throws: VigilConfigError.outOfRange(field: field, allowed: allowed)) {
-        try JSONDecoder().decode(VigilConfig.self, from: json)
+        let json = try configJSON(overrides: [field: override])
+        _ = try JSONDecoder().decode(VigilConfig.self, from: json)
     }
 }
 
@@ -73,24 +81,20 @@ func configRejectsOutOfRange(field: String, value: String, allowed: String) {
     #expect(worstCaseReArmInterval < IdleAssertionDescriptor.deadManTimeout)
 }
 
-@Test func configDecodesEmptyObjectToDefaults() throws {
-    let config = try JSONDecoder().decode(VigilConfig.self, from: Data("{}".utf8))
-    #expect(config == .default)
-}
+@Test func configRejectsMissingAndExtraFields() throws {
+    var missing = try #require(JSONSerialization.jsonObject(with: configJSON()) as? [String: Any])
+    missing.removeValue(forKey: "lowPowerCutout")
+    #expect(throws: DecodingError.self) {
+        try JSONDecoder().decode(
+            VigilConfig.self,
+            from: JSONSerialization.data(withJSONObject: missing, options: [.sortedKeys])
+        )
+    }
 
-@Test func configDecodesPartialObjectKeepingOtherDefaults() throws {
-    let json = Data(#"{"batteryFloorPercent": 30, "pollIdleSeconds": 90}"#.utf8)
-    let config = try JSONDecoder().decode(VigilConfig.self, from: json)
-    #expect(config.batteryFloorPercent == 30)
-    #expect(config.pollIdleSeconds == 90)
-    #expect(config.thermalCutoutCelsius == 80)
-    #expect(config.activityWindowSeconds == 300)
-    #expect(config.pendingAsyncMaxAgeSeconds == 43200)
-    #expect(config.pollBlockingSeconds == 15)
-    #expect(config.hideMenuBarExtra == false)
-    #expect(config.notifyOnRelease == true)
-    #expect(config.notifyOnCutout == true)
-    #expect(config.lowPowerCutout == true)
+    let extra = try configJSON(overrides: ["legacyFallback": true])
+    #expect(throws: DecodingError.self) {
+        try JSONDecoder().decode(VigilConfig.self, from: extra)
+    }
 }
 
 @Test func configRoundTripsThroughJSON() throws {

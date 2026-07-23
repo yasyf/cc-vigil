@@ -31,14 +31,15 @@ func holdClampsTTLTo24Hours(requested: Int, expected: Int) {
     #expect(hold.ttlSeconds == expected)
 }
 
-@Test func holdTTLClampSurvivesDecoding() throws {
+@Test func holdDecodeRejectsOutOfRangeTTL() throws {
     let json = Data(
         #"{"key":"k","reason":"r","ttlSeconds":90000,"createdAt":1800000000,"pid":null}"#.utf8
     )
     let decoder = JSONDecoder()
     decoder.dateDecodingStrategy = .secondsSince1970
-    let decoded = try decoder.decode(Hold.self, from: json)
-    #expect(decoded.ttlSeconds == 86400)
+    #expect(throws: DecodingError.self) {
+        try decoder.decode(Hold.self, from: json)
+    }
 }
 
 @Test func holdAddRecordsCreationFacts() {

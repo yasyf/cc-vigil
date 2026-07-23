@@ -44,11 +44,19 @@ extension SleepAlert: Codable {
         atEpoch = try container.decode(Int64.self, forKey: .atEpoch)
         switch try container.decode(Kind.self, forKey: .kind) {
         case .released:
+            try requireExactKeys(
+                from: decoder,
+                required: ["atEpoch", "holds", "id", "kind", "sessions"]
+            )
             payload = try .released(
                 sessions: container.decode(Int.self, forKey: .sessions),
                 holds: container.decode(Int.self, forKey: .holds)
             )
         case .cutoutLatched:
+            try requireExactKeys(
+                from: decoder,
+                required: ["atEpoch", "id", "kind", "kinds"]
+            )
             payload = try .cutoutLatched(kinds: container.decode([CutoutKind].self, forKey: .kinds))
         }
     }

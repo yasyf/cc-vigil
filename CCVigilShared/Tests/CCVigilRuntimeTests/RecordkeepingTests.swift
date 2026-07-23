@@ -46,7 +46,26 @@ private let at = Date(timeIntervalSince1970: 1_767_323_047)
     #expect(try String(contentsOf: url, encoding: .utf8) == "{\"at\":1767323047,\"event\":\"wake\"}\n")
 }
 
-@Test func stateStoreRoundTripsAtomically() throws {
+private func jsonObject(at url: URL) throws -> [String: Any] {
+    try #require(JSONSerialization.jsonObject(with: Data(contentsOf: url)) as? [String: Any])
+}
+
+private func writeJSON(_ object: [String: Any], to url: URL) throws {
+    try JSONSerialization.data(withJSONObject: object, options: [.sortedKeys]).write(to: url)
+}
+
+private func payload(in envelope: [String: Any]) throws -> [String: Any] {
+    try #require(envelope["payload"] as? [String: Any])
+}
+
+@Test func persistedSchemaV1FingerprintsArePinned() {
+    #expect(PersistedSchemaV1.configFingerprint
+        == "dev.yasyf.cc-vigil.config.17c0fff2e9b6604ea00c3e404570aa1e5ccb240039891f4b83cd27940b947709")
+    #expect(PersistedSchemaV1.stateFingerprint
+        == "dev.yasyf.cc-vigil.state.b766bd33ef7db8fb7e18131aa0b4674e6df20863929728c38ef3e84a913915e3")
+}
+
+@Test func stateStoreRoundTripsExactV1Envelope() throws {
     let directory = try temporaryDirectory()
     defer { try? FileManager.default.removeItem(at: directory) }
     let url = directory.appendingPathComponent("state.json")
@@ -57,111 +76,114 @@ private let at = Date(timeIntervalSince1970: 1_767_323_047)
         registeredRoots: ["/relocated/.claude/projects"]
     )
     try StateStore.save(state, to: url)
-    let loaded = try StateStore.load(url: url)
-    #expect(loaded == state)
-    #expect(loaded?.registeredRoots == ["/relocated/.claude/projects"])
-    try StateStore.save(PersistedState(holds: [], pausedUntil: nil), to: url)
-    #expect(try StateStore.load(url: url) == PersistedState(holds: [], pausedUntil: nil))
-}
-
-@Test func stateStoreQuarantinesCorruptFile() throws {
-    let directory = try temporaryDirectory()
-    defer { try? FileManager.default.removeItem(at: directory) }
-    let url = directory.appendingPathComponent("state.json")
-    let corruptBytes = Data("{ this is not valid state ".utf8)
-    try corruptBytes.write(to: url)
-
-    #expect(try StateStore.load(url: url) == PersistedState(holds: [], pausedUntil: nil))
-    #expect(!FileManager.default.fileExists(atPath: url.path))
-
-    let quarantine = url.appendingPathExtension("corrupt")
-    #expect(try Data(contentsOf: quarantine) == corruptBytes)
-
-    let state = PersistedState(
-        holds: [Hold(key: "ci", reason: "build", ttlSeconds: 600, createdAt: at, pid: 7)],
-        pausedUntil: at
-    )
-    try StateStore.save(state, to: url)
     #expect(try StateStore.load(url: url) == state)
+
+    let envelope = try jsonObject(at: url)
+    #expect(Set(envelope.keys) == ["payload", "schema", "schemaFingerprint", "schemaVersion"])
+    #expect(envelope["schema"] as? String == PersistedSchemaV1.stateIdentity)
+    #expect(envelope["schemaVersion"] as? Int == PersistedSchemaV1.version)
+    #expect(envelope["schemaFingerprint"] as? String == PersistedSchemaV1.stateFingerprint)
+    #expect(try Set(payload(in: envelope).keys) == [
+        "alertedCutouts", "holds", "nextAlertId", "pausedUntil", "recentAlerts", "registeredRoots",
+    ])
 }
 
-@Test func stateStoreQuarantineOverwritesPriorCorrupt() throws {
+@Test(arguments: [
+    "not json at all",
+    "{\"holds\":[],\"pausedUntil\":1767323100}",
+])
+func stateStoreRejectsInvalidAndOldShapes(contents: String) throws {
     let directory = try temporaryDirectory()
     defer { try? FileManager.default.removeItem(at: directory) }
     let url = directory.appendingPathComponent("state.json")
-    let quarantine = url.appendingPathExtension("corrupt")
-    try Data("stale corrupt bytes".utf8).write(to: quarantine)
-    let corruptBytes = Data("fresh corrupt bytes {".utf8)
-    try corruptBytes.write(to: url)
+    let bytes = Data(contents.utf8)
+    try bytes.write(to: url)
 
-    #expect(try StateStore.load(url: url) == PersistedState(holds: [], pausedUntil: nil))
-    #expect(try Data(contentsOf: quarantine) == corruptBytes)
-}
-
-@Test func stateStoreRecoversWhenQuarantineMoveFails() throws {
-    let directory = try temporaryDirectory()
-    defer { try? FileManager.default.removeItem(at: directory) }
-    let url = directory.appendingPathComponent("state.json")
-    try Data("corrupt state {".utf8).write(to: url)
-    // A read-only directory fails the quarantine's rename; load must recover regardless.
-    try FileManager.default.setAttributes([.posixPermissions: 0o500], ofItemAtPath: directory.path)
-    defer { try? FileManager.default.setAttributes([.posixPermissions: 0o700], ofItemAtPath: directory.path) }
-
-    #expect(try StateStore.load(url: url) == PersistedState(holds: [], pausedUntil: nil))
-    #expect(FileManager.default.fileExists(atPath: url.path))
+    #expect(throws: (any Error).self) {
+        try StateStore.load(url: url)
+    }
+    #expect(try Data(contentsOf: url) == bytes)
     #expect(!FileManager.default.fileExists(atPath: url.appendingPathExtension("corrupt").path))
 }
 
-@Test func configLoaderDefaultsWhenAbsent() throws {
+@Test func stateStoreRejectsIdentityDrift() throws {
+    let directory = try temporaryDirectory()
+    defer { try? FileManager.default.removeItem(at: directory) }
+    let url = directory.appendingPathComponent("state.json")
+    let state = PersistedState(
+        holds: [Hold(key: "ci", reason: "build", ttlSeconds: 600, createdAt: at, pid: 7)],
+        pausedUntil: nil
+    )
+    try StateStore.save(state, to: url)
+    let original = try jsonObject(at: url)
+
+    for (field, value) in [
+        ("schema", "dev.yasyf.cc-vigil.legacy" as Any),
+        ("schemaVersion", 2 as Any),
+        ("schemaFingerprint", "cc-vigil.state.stale" as Any),
+    ] {
+        var changed = original
+        changed[field] = value
+        try writeJSON(changed, to: url)
+        #expect(throws: DecodingError.self) {
+            try StateStore.load(url: url)
+        }
+    }
+
+    var changed = original
+    changed["legacyEnvelopeField"] = true
+    try writeJSON(changed, to: url)
+    #expect(throws: DecodingError.self) {
+        try StateStore.load(url: url)
+    }
+
+    changed = original
+    changed.removeValue(forKey: "schemaFingerprint")
+    try writeJSON(changed, to: url)
+    #expect(throws: DecodingError.self) {
+        try StateStore.load(url: url)
+    }
+}
+
+@Test func stateStoreRejectsPayloadShapeDrift() throws {
+    let directory = try temporaryDirectory()
+    defer { try? FileManager.default.removeItem(at: directory) }
+    let url = directory.appendingPathComponent("state.json")
+    let state = PersistedState(
+        holds: [Hold(key: "ci", reason: "build", ttlSeconds: 600, createdAt: at, pid: 7)],
+        pausedUntil: nil
+    )
+    try StateStore.save(state, to: url)
+    let original = try jsonObject(at: url)
+
+    var changed = original
+    var changedPayload = try payload(in: original)
+    changedPayload.removeValue(forKey: "registeredRoots")
+    changed["payload"] = changedPayload
+    try writeJSON(changed, to: url)
+    #expect(throws: DecodingError.self) {
+        try StateStore.load(url: url)
+    }
+
+    changed = original
+    changedPayload = try payload(in: original)
+    var holds = try #require(changedPayload["holds"] as? [[String: Any]])
+    holds[0]["legacyField"] = true
+    changedPayload["holds"] = holds
+    changed["payload"] = changedPayload
+    try writeJSON(changed, to: url)
+    #expect(throws: DecodingError.self) {
+        try StateStore.load(url: url)
+    }
+}
+
+@Test func configLoaderDefaultsOnlyWhenAbsent() throws {
     let directory = try temporaryDirectory()
     defer { try? FileManager.default.removeItem(at: directory) }
     #expect(try ConfigLoader.load(url: directory.appendingPathComponent("config.json")) == .default)
 }
 
-@Test func configLoaderReadsOverrides() throws {
-    let directory = try temporaryDirectory()
-    defer { try? FileManager.default.removeItem(at: directory) }
-    let url = directory.appendingPathComponent("config.json")
-    try Data("{\"batteryFloorPercent\":30,\"pollBlockingSeconds\":5}".utf8).write(to: url)
-    let config = try ConfigLoader.load(url: url)
-    #expect(config.batteryFloorPercent == 30)
-    #expect(config.pollBlockingSeconds == 5)
-    #expect(config.thermalCutoutCelsius == 80)
-}
-
-@Test(arguments: [
-    "not json at all",
-    "{\"batteryFloorPercent\":99}",
-    "{\"pollIdleSeconds\":0}",
-])
-func configLoaderQuarantinesInvalidConfig(contents: String) throws {
-    let directory = try temporaryDirectory()
-    defer { try? FileManager.default.removeItem(at: directory) }
-    let url = directory.appendingPathComponent("config.json")
-    let corruptBytes = Data(contents.utf8)
-    try corruptBytes.write(to: url)
-
-    #expect(try ConfigLoader.load(url: url) == .default)
-    #expect(!FileManager.default.fileExists(atPath: url.path))
-
-    let quarantine = url.appendingPathExtension("corrupt")
-    #expect(try Data(contentsOf: quarantine) == corruptBytes)
-}
-
-@Test func configLoaderRecoversWhenQuarantineMoveFails() throws {
-    let directory = try temporaryDirectory()
-    defer { try? FileManager.default.removeItem(at: directory) }
-    let url = directory.appendingPathComponent("config.json")
-    try Data("corrupt config {".utf8).write(to: url)
-    try FileManager.default.setAttributes([.posixPermissions: 0o500], ofItemAtPath: directory.path)
-    defer { try? FileManager.default.setAttributes([.posixPermissions: 0o700], ofItemAtPath: directory.path) }
-
-    #expect(try ConfigLoader.load(url: url) == .default)
-    #expect(FileManager.default.fileExists(atPath: url.path))
-    #expect(!FileManager.default.fileExists(atPath: url.appendingPathExtension("corrupt").path))
-}
-
-@Test func configLoaderSaveRoundTripsNonDefaults() throws {
+@Test func configLoaderRoundTripsExactV1Envelope() throws {
     let directory = try temporaryDirectory()
     defer { try? FileManager.default.removeItem(at: directory) }
     let url = directory.appendingPathComponent("config.json")
@@ -173,7 +195,89 @@ func configLoaderQuarantinesInvalidConfig(contents: String) throws {
     )
     try ConfigLoader.save(config, to: url)
     #expect(try ConfigLoader.load(url: url) == config)
-    let contents = try String(contentsOf: url, encoding: .utf8)
-    #expect(contents.contains("\"batteryFloorPercent\" : 35"))
-    #expect(contents.contains("\"hideMenuBarExtra\" : true"))
+
+    let envelope = try jsonObject(at: url)
+    #expect(Set(envelope.keys) == ["payload", "schema", "schemaFingerprint", "schemaVersion"])
+    #expect(envelope["schema"] as? String == PersistedSchemaV1.configIdentity)
+    #expect(envelope["schemaVersion"] as? Int == PersistedSchemaV1.version)
+    #expect(envelope["schemaFingerprint"] as? String == PersistedSchemaV1.configFingerprint)
+    #expect(try Set(payload(in: envelope).keys) == [
+        "activityWindowSeconds",
+        "batteryFloorPercent",
+        "hideMenuBarExtra",
+        "lowPowerCutout",
+        "notifyOnCutout",
+        "notifyOnRelease",
+        "pendingAsyncMaxAgeSeconds",
+        "pollBlockingSeconds",
+        "pollIdleSeconds",
+        "thermalCutoutCelsius",
+        "transcriptsRoots",
+    ])
+}
+
+@Test(arguments: [
+    "not json at all",
+    "{\"batteryFloorPercent\":30,\"pollBlockingSeconds\":5}",
+])
+func configLoaderRejectsInvalidAndOldShapes(contents: String) throws {
+    let directory = try temporaryDirectory()
+    defer { try? FileManager.default.removeItem(at: directory) }
+    let url = directory.appendingPathComponent("config.json")
+    let bytes = Data(contents.utf8)
+    try bytes.write(to: url)
+
+    #expect(throws: (any Error).self) {
+        try ConfigLoader.load(url: url)
+    }
+    #expect(try Data(contentsOf: url) == bytes)
+    #expect(!FileManager.default.fileExists(atPath: url.appendingPathExtension("corrupt").path))
+}
+
+@Test func configLoaderRejectsIdentityAndPayloadDrift() throws {
+    let directory = try temporaryDirectory()
+    defer { try? FileManager.default.removeItem(at: directory) }
+    let url = directory.appendingPathComponent("config.json")
+    try ConfigLoader.save(.default, to: url)
+    let original = try jsonObject(at: url)
+
+    for (field, value) in [
+        ("schema", "dev.yasyf.cc-vigil.legacy" as Any),
+        ("schemaVersion", 2 as Any),
+        ("schemaFingerprint", "cc-vigil.config.stale" as Any),
+    ] {
+        var changed = original
+        changed[field] = value
+        try writeJSON(changed, to: url)
+        #expect(throws: DecodingError.self) {
+            try ConfigLoader.load(url: url)
+        }
+    }
+
+    var changed = original
+    var changedPayload = try payload(in: original)
+    changedPayload.removeValue(forKey: "lowPowerCutout")
+    changed["payload"] = changedPayload
+    try writeJSON(changed, to: url)
+    #expect(throws: DecodingError.self) {
+        try ConfigLoader.load(url: url)
+    }
+
+    changed = original
+    changedPayload = try payload(in: original)
+    changedPayload["legacyFallback"] = true
+    changed["payload"] = changedPayload
+    try writeJSON(changed, to: url)
+    #expect(throws: DecodingError.self) {
+        try ConfigLoader.load(url: url)
+    }
+
+    changed = original
+    changedPayload = try payload(in: original)
+    changedPayload["pollIdleSeconds"] = 0
+    changed["payload"] = changedPayload
+    try writeJSON(changed, to: url)
+    #expect(throws: VigilConfigError.outOfRange(field: "pollIdleSeconds", allowed: "1-600")) {
+        try ConfigLoader.load(url: url)
+    }
 }
