@@ -34,6 +34,7 @@ jobs:
           brew upgrade swiftformat || brew install swiftformat
           command -v swiftlint >/dev/null || brew install swiftlint
           command -v xcodegen >/dev/null || brew install xcodegen
+          command -v actionlint >/dev/null || brew install actionlint
       - name: Format (lint mode)
         # Invoke brew's swiftformat explicitly — the image may ship a non-brew
         # copy earlier on PATH — and echo the version so any future skew is a
@@ -44,6 +45,10 @@ jobs:
           "$swiftformat" --lint .
       - name: Lint
         run: swiftlint --quiet
+      - name: Validate release workflow
+        run: |
+          actionlint
+          bash .github/scripts/verify-release-workflow.sh
       - name: Generate the Xcode project
         run: xcodegen generate
       - name: Build (app + embedded daemon, helper, CLI; ad-hoc signed)
