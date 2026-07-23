@@ -20,7 +20,7 @@ public final class CLISocketServer: @unchecked Sendable {
         configuration.maximumActiveRequests = Self.maximumActiveRequests
         server = SocketServer(
             path: socketPath,
-            build: WireProtocol.build,
+            wireBuild: WireProtocol.wireBuild,
             configuration: configuration,
             trust: .sameEffectiveUser
         ) { request in

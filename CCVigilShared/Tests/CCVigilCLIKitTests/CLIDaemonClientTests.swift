@@ -136,19 +136,19 @@ struct CLIDaemonClientTests {
         }
     }
 
-    @Test func rejectsBuildMismatchBeforeDispatch() async throws {
+    @Test func rejectsWireBuildMismatchBeforeDispatch() async throws {
         let dir = try ShortTempDir(prefix: "sock")
         defer { dir.tearDown() }
         let server = FakeSocketServer(
             path: dir.socketPath("s.sock"),
-            build: "cc-vigil.cli.v2",
+            wireBuild: "cc-vigil.cli.v2",
             reply: .respond(.ok)
         )
         try await server.withStarted {
             try await withCLIDaemonClient(path: server.path, timeoutSeconds: 5) { client in
                 do {
                     _ = try await client.roundTrip(.ping)
-                    Issue.record("expected a build rejection")
+                    Issue.record("expected a wire build rejection")
                 } catch let error as DaemonClientError {
                     guard case .rejected = error else {
                         Issue.record("expected rejected, got \(error)")

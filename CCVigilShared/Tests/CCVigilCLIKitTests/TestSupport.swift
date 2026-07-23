@@ -80,14 +80,14 @@ final class FakeSocketServer: @unchecked Sendable {
     private let signal = FakeRequestSignal()
     private let server: SocketServer
 
-    init(path: String, build: String = WireProtocol.build, reply: FakeReply) {
+    init(path: String, wireBuild: String = WireProtocol.wireBuild, reply: FakeReply) {
         self.path = path
         self.reply = reply
         var configuration = SocketServer.Configuration()
         configuration.maximumSessions = 1
         server = SocketServer(
             path: path,
-            build: build,
+            wireBuild: wireBuild,
             configuration: configuration,
             trust: .sameEffectiveUser
         ) { [recorded, signal] request in

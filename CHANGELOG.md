@@ -6,6 +6,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.5.0] - 2026-07-23
+
+### Changed
+
+- The persistent CLI transport now pins daemonkit 0.8.1 and uses its exact
+  `wireBuild` identity surface throughout clients, servers, and tests.
+
 ## [0.4.2] - 2026-07-22
 
 ### Changed
@@ -318,7 +325,8 @@ Claude Code shipped as a signed and notarized menu-bar app.
   installer state machine, symlinker, away digest) lives in the new
   CCVigilAppKit library under `swift test`.
 
-[Unreleased]: https://github.com/yasyf/cc-vigil/compare/v0.4.2...HEAD
+[Unreleased]: https://github.com/yasyf/cc-vigil/compare/v0.5.0...HEAD
+[0.5.0]: https://github.com/yasyf/cc-vigil/compare/v0.4.2...v0.5.0
 [0.4.2]: https://github.com/yasyf/cc-vigil/compare/v0.4.1...v0.4.2
 [0.4.1]: https://github.com/yasyf/cc-vigil/compare/v0.4.0...v0.4.1
 [0.4.0]: https://github.com/yasyf/cc-vigil/compare/v0.3.0...v0.4.0

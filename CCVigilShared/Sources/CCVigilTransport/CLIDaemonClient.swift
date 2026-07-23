@@ -57,7 +57,7 @@ public final class CLIDaemonClient: @unchecked Sendable {
     public func roundTrip(_ request: WireRequest) async throws -> WireResponse {
         let client: SocketClient
         do {
-            client = try await session.current(path: path, build: WireProtocol.build)
+            client = try await session.current(path: path, wireBuild: WireProtocol.wireBuild)
             let requestTimeout = request == .clear
                 ? max(timeoutSeconds, Self.timeout(for: request))
                 : timeoutSeconds
@@ -111,7 +111,7 @@ private actor CLIDaemonSession {
 
     private var state = State.idle
 
-    func current(path: String, build: String) async throws -> SocketClient {
+    func current(path: String, wireBuild: String) async throws -> SocketClient {
         switch state {
         case let .ready(client):
             return client
@@ -122,13 +122,13 @@ private actor CLIDaemonSession {
             let task = Task<SocketClient, Error> {
                 let opened = try await SocketClient(
                     path: path,
-                    build: build,
+                    wireBuild: wireBuild,
                     trust: .sameEffectiveUser
                 )
-                guard opened.peerBuild == build else {
+                guard opened.peerWireBuild == wireBuild else {
                     await opened.close()
                     throw DaemonClientError.rejected(
-                        "build \(opened.peerBuild) does not match \(build)"
+                        "wire build \(opened.peerWireBuild) does not match \(wireBuild)"
                     )
                 }
                 return opened
