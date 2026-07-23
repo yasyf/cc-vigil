@@ -128,6 +128,7 @@ jobs:
         with:
           app: build/Build/Products/Release/CCVigil.app
           name: cc-vigil
+          release-tag: ${{ github.ref_name }}
           # xcodebuild already signed the bundle inside-out with per-target
           # entitlements; re-signing here (the Contents/MacOS-only loop) would both
           # miss the embedded tools and strip their signatures. Only notarize +
