@@ -46,17 +46,13 @@ private func json(_ record: EventRecord) throws -> String {
         + "\"pid\":4242,\"reason\":\"cargo build\",\"ttlSeconds\":600}]}")
 }
 
-@Test func preHoldsBlockEdgeDecodesWithNoHolds() throws {
+@Test func blockEdgeWithoutHoldsIsRejected() {
     let line = "{\"applied\":true,\"at\":1767323047,\"blocked\":true,"
         + "\"decision\":{\"activeSessions\":[{\"path\":\"/t/a.jsonl\",\"reasons\":[\"mid-tool\"]}],"
         + "\"discounts\":[],\"shouldBlock\":true},\"event\":\"block-edge\"}"
-    let decoded = try WireCodec.decodePayload(EventRecord.self, from: Data(line.utf8))
-    let decision = BlockDecision(
-        shouldBlock: true,
-        activeSessions: [ActiveSession(path: "/t/a.jsonl", reasons: [.midTool])],
-        discounts: []
-    )
-    #expect(decoded == EventRecord(at: at, event: .blockEdge(blocked: true, applied: true, decision: decision, holds: [])))
+    #expect(throws: (any Error).self) {
+        try WireCodec.decodePayload(EventRecord.self, from: Data(line.utf8))
+    }
 }
 
 @Test(arguments: [

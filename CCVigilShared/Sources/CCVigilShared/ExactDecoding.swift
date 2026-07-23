@@ -15,7 +15,7 @@ struct ExactCodingKey: CodingKey, Hashable {
     }
 }
 
-func requireExactKeys(
+public func requireExactKeys(
     from decoder: Decoder,
     required: Set<String>,
     optional: Set<String> = []

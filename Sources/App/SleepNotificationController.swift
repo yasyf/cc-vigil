@@ -17,10 +17,11 @@ final class SleepNotificationController: NSObject, UNUserNotificationCenterDeleg
     }
 
     private let center = UNUserNotificationCenter.current()
-    private let notifier = SleepNotifier(store: UserDefaultsAlertWatermarkStore())
+    private let notifier: SleepNotifier
     private var authorization = Authorization.unknown
 
-    override init() {
+    init(store: any AlertWatermarkStore) {
+        notifier = SleepNotifier(store: store)
         super.init()
         center.delegate = self
     }

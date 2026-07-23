@@ -1,4 +1,5 @@
 import CCVigilAppKit
+import CCVigilRuntime
 import CCVigilShared
 import Foundation
 import Testing
@@ -84,19 +85,20 @@ private func edge(_ blocked: Bool, at epoch: Int64) -> EventRecord {
     ])
 }
 
-@Test func decodeRecordsRoundTripsAndSkipsForeignLines() throws {
+@Test func decodeRecordsRoundTripsExactRecords() throws {
     let records = [
         edge(true, at: 1000),
         EventRecord(at: at(1100), event: .cutoutLatched(.battery)),
     ]
     var jsonl = Data()
     for record in records {
-        try jsonl.append(WireCodec.encodePayload(record))
+        try jsonl.append(EventLog.encode(record))
         jsonl.append(0x0A)
     }
-    jsonl.append(Data("{\"at\":1200,\"event\":\"from-a-newer-daemon\"}\n".utf8))
-    jsonl.append(Data("not json\n\n".utf8))
-    let decoded = AwayDigest.decodeRecords(fromJSONL: jsonl)
-    #expect(decoded.records == records)
-    #expect(decoded.skippedLines == 2)
+    #expect(try AwayDigest.decodeRecords(fromJSONL: jsonl) == records)
+
+    jsonl.append(Data("not json\n".utf8))
+    #expect(throws: (any Error).self) {
+        try AwayDigest.decodeRecords(fromJSONL: jsonl)
+    }
 }

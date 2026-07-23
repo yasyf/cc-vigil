@@ -37,28 +37,6 @@ public protocol AlertWatermarkStore: AnyObject, Sendable {
     func recordSeen(_ id: Int64)
 }
 
-/// UserDefaults-backed watermark, matching how the App layer persists its other
-/// preferences (a string key on the standard suite). Absence is the first-run
-/// signal, so the key is read through `object(forKey:)` rather than the
-/// zero-defaulting `integer(forKey:)`.
-public final class UserDefaultsAlertWatermarkStore: AlertWatermarkStore, @unchecked Sendable {
-    private static let key = "lastSeenSleepAlertId"
-    private let defaults: UserDefaults
-
-    public init(defaults: UserDefaults = .standard) {
-        self.defaults = defaults
-    }
-
-    public var lastSeenAlertId: Int64? {
-        guard defaults.object(forKey: Self.key) != nil else { return nil }
-        return Int64(defaults.integer(forKey: Self.key))
-    }
-
-    public func recordSeen(_ id: Int64) {
-        defaults.set(Int(id), forKey: Self.key)
-    }
-}
-
 /// Replays the daemon's composed sleep-alert stream into user-facing toasts,
 /// exactly once each. The daemon's SleepAlertComposer mints every release and
 /// cutout edge from its own unbroken status stream and rides the recent-alert

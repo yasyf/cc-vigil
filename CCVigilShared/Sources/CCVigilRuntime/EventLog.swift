@@ -17,9 +17,31 @@ public final class EventLog: Sendable {
     }
 
     public func append(_ record: EventRecord) throws {
-        let line = try WireCodec.encodePayload(record) + Data([0x0A])
+        let line = try Self.encode(record) + Data([0x0A])
         try lock.withLock {
             try lockedAppend(line)
+        }
+    }
+
+    public static func encode(_ record: EventRecord) throws -> Data {
+        try PersistedSchemaCodec.encodeEvent(record)
+    }
+
+    public static func decodeRecords(fromJSONL data: Data) throws -> [EventRecord] {
+        guard !data.isEmpty else { return [] }
+        var lines = data.split(separator: 0x0A, omittingEmptySubsequences: false)
+        if data.last == 0x0A {
+            lines.removeLast()
+        }
+        return try lines.enumerated().map { offset, line in
+            guard !line.isEmpty else {
+                throw EventLogDecodingError(line: offset + 1, message: "empty record")
+            }
+            do {
+                return try PersistedSchemaCodec.decodeEvent(Data(line))
+            } catch {
+                throw EventLogDecodingError(line: offset + 1, message: String(describing: error))
+            }
         }
     }
 
@@ -40,5 +62,14 @@ public final class EventLog: Sendable {
         defer { try? handle.close() }
         try handle.seekToEnd()
         try handle.write(contentsOf: line)
+    }
+}
+
+private struct EventLogDecodingError: LocalizedError {
+    let line: Int
+    let message: String
+
+    var errorDescription: String? {
+        "events.log line \(line): \(message)"
     }
 }

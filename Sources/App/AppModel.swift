@@ -11,8 +11,6 @@ import os
 @Observable
 final class AppModel {
     static let pauseToggleSeconds = 3600
-    private static let firstRunCompletedKey = "firstRunCompleted"
-    private static let lastMenuOpenedAtKey = "lastMenuOpenedAt"
     private static let daemonRestartDebounceSeconds = 1.5
     private static let launchOpenGraceSeconds = 5.0
 
@@ -26,9 +24,10 @@ final class AppModel {
 
     @ObservationIgnored private let paths: SupportPaths
     @ObservationIgnored private let commands: DaemonCommands
-    @ObservationIgnored private let notifications = SleepNotificationController()
+    @ObservationIgnored private let appState: UserDefaultsAppStateStore
+    @ObservationIgnored private let notifications: SleepNotificationController
     @ObservationIgnored private let registrar = ServiceRegistrar()
-    @ObservationIgnored private let repairHints = RepairHintTracker(store: UserDefaultsRepairFailureCountStore())
+    @ObservationIgnored private let repairHints: RepairHintTracker
     @ObservationIgnored private let launchedAt = Date()
     @ObservationIgnored private var daemonClient: DaemonClient?
     @ObservationIgnored private var restartTask: Task<Void, Never>?
@@ -38,9 +37,13 @@ final class AppModel {
         let paths = SupportPaths(directory: supportDirectory)
         self.paths = paths
         commands = DaemonCommands(socketPath: paths.socketPath)
-        firstRunCompleted = UserDefaults.standard.bool(forKey: Self.firstRunCompletedKey)
         do {
             try paths.ensureDirectory()
+            let appState = try UserDefaultsAppStateStore()
+            self.appState = appState
+            notifications = SleepNotificationController(store: appState)
+            repairHints = RepairHintTracker(store: appState)
+            firstRunCompleted = appState.firstRunCompleted
             config = try ConfigLoader.load(url: paths.configURL)
         } catch {
             fatalError("cc-vigil support directory unusable: \(error)")
@@ -98,18 +101,22 @@ final class AppModel {
 
     func menuOpened() {
         let now = Date()
-        let defaults = UserDefaults.standard
-        let storedEpoch = defaults.double(forKey: Self.lastMenuOpenedAtKey)
-        let since = storedEpoch > 0 ? Date(timeIntervalSince1970: storedEpoch) : launchedAt
+        let since = appState.lastMenuOpenedAt ?? launchedAt
         // MenuBarExtra evaluates its content once while the scene is built, so
         // onAppear fires at launch too; that artifact must not consume the
         // away window before the user actually opens the menu.
         if now.timeIntervalSince(launchedAt) > Self.launchOpenGraceSeconds {
-            defaults.set(now.timeIntervalSince1970, forKey: Self.lastMenuOpenedAtKey)
+            appState.recordMenuOpened(at: now)
         }
         let eventsURL = paths.eventsURL
         Task {
-            awaySummary = await Self.computeAwaySummary(eventsURL: eventsURL, since: since, now: now)
+            do {
+                awaySummary = try await Self.computeAwaySummary(eventsURL: eventsURL, since: since, now: now)
+            } catch {
+                awaySummary = nil
+                maintenanceMessage = "events.log invalid: \(error.localizedDescription)"
+                Logger.app.error("events.log invalid: \(String(describing: error), privacy: .public)")
+            }
         }
     }
 
@@ -117,13 +124,11 @@ final class AppModel {
         eventsURL: URL,
         since: Date,
         now: Date
-    ) async -> AwaySummary? {
-        guard let data = try? Data(contentsOf: eventsURL) else { return nil }
-        let decoded = AwayDigest.decodeRecords(fromJSONL: data)
-        if decoded.skippedLines > 0 {
-            Logger.app.error("events.log: skipped \(decoded.skippedLines, privacy: .public) undecodable lines")
-        }
-        return AwayDigest.summarize(records: decoded.records, since: since, now: now)
+    ) async throws -> AwaySummary? {
+        guard FileManager.default.fileExists(atPath: eventsURL.path) else { return nil }
+        let data = try Data(contentsOf: eventsURL)
+        let records = try AwayDigest.decodeRecords(fromJSONL: data)
+        return AwayDigest.summarize(records: records, since: since, now: now)
     }
 
     private func send(_ request: WireRequest) {
@@ -264,11 +269,11 @@ final class AppModel {
 
     func completeFirstRun() {
         firstRunCompleted = true
-        UserDefaults.standard.set(true, forKey: Self.firstRunCompletedKey)
+        appState.recordFirstRunCompleted(true)
     }
 
     private func resetFirstRun() {
         firstRunCompleted = false
-        UserDefaults.standard.set(false, forKey: Self.firstRunCompletedKey)
+        appState.recordFirstRunCompleted(false)
     }
 }

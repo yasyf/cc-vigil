@@ -20,7 +20,14 @@ private let at = Date(timeIntervalSince1970: 1_767_323_047)
     try log.append(EventRecord(at: at, event: .wake))
     try log.append(EventRecord(at: at, event: .resumed))
     let contents = try String(contentsOf: url, encoding: .utf8)
-    #expect(contents == "{\"at\":1767323047,\"event\":\"wake\"}\n{\"at\":1767323047,\"event\":\"resumed\"}\n")
+    let prefix = "{\"payload\":{\"at\":1767323047,\"event\":"
+    let suffix = "},\"schema\":\"dev.yasyf.cc-vigil.event\",\"schemaFingerprint\":\""
+        + PersistedSchemaV1.eventFingerprint + "\",\"schemaVersion\":1}\n"
+    #expect(contents == prefix + "\"wake\"" + suffix + prefix + "\"resumed\"" + suffix)
+    #expect(try EventLog.decodeRecords(fromJSONL: Data(contents.utf8)) == [
+        EventRecord(at: at, event: .wake),
+        EventRecord(at: at, event: .resumed),
+    ])
 }
 
 @Test func eventLogRotatesOnceAtSizeLimit() throws {
@@ -28,22 +35,32 @@ private let at = Date(timeIntervalSince1970: 1_767_323_047)
     defer { try? FileManager.default.removeItem(at: directory) }
     let url = directory.appendingPathComponent("events.log")
     let rotated = directory.appendingPathComponent("events.log.1")
-    let lineBytes = 36
-    let log = EventLog(url: url, maxBytes: lineBytes * 2)
+    let wakeLineBytes = try EventLog.encode(EventRecord(at: at, event: .wake)).count + 1
+    let resumedLineBytes = try EventLog.encode(EventRecord(at: at, event: .resumed)).count + 1
+    let log = EventLog(url: url, maxBytes: wakeLineBytes + resumedLineBytes)
     try log.append(EventRecord(at: at, event: .wake))
     try log.append(EventRecord(at: at, event: .wake))
     #expect(!FileManager.default.fileExists(atPath: rotated.path))
     try log.append(EventRecord(at: at, event: .resumed))
     let rotatedContents = try String(contentsOf: rotated, encoding: .utf8)
-    #expect(rotatedContents == "{\"at\":1767323047,\"event\":\"wake\"}\n{\"at\":1767323047,\"event\":\"wake\"}\n")
+    #expect(try EventLog.decodeRecords(fromJSONL: Data(rotatedContents.utf8)) == [
+        EventRecord(at: at, event: .wake),
+        EventRecord(at: at, event: .wake),
+    ])
     let liveContents = try String(contentsOf: url, encoding: .utf8)
-    #expect(liveContents == "{\"at\":1767323047,\"event\":\"resumed\"}\n")
+    #expect(try EventLog.decodeRecords(fromJSONL: Data(liveContents.utf8)) == [
+        EventRecord(at: at, event: .resumed),
+    ])
     // A second rotation replaces the previous .1 (single-rotation policy).
     try log.append(EventRecord(at: at, event: .wake))
     try log.append(EventRecord(at: at, event: .wake))
-    #expect(try String(contentsOf: rotated, encoding: .utf8)
-        == "{\"at\":1767323047,\"event\":\"resumed\"}\n{\"at\":1767323047,\"event\":\"wake\"}\n")
-    #expect(try String(contentsOf: url, encoding: .utf8) == "{\"at\":1767323047,\"event\":\"wake\"}\n")
+    #expect(try EventLog.decodeRecords(fromJSONL: Data(contentsOf: rotated)) == [
+        EventRecord(at: at, event: .resumed),
+        EventRecord(at: at, event: .wake),
+    ])
+    #expect(try EventLog.decodeRecords(fromJSONL: Data(contentsOf: url)) == [
+        EventRecord(at: at, event: .wake),
+    ])
 }
 
 private func jsonObject(at url: URL) throws -> [String: Any] {
@@ -63,6 +80,39 @@ private func payload(in envelope: [String: Any]) throws -> [String: Any] {
         == "dev.yasyf.cc-vigil.config.17c0fff2e9b6604ea00c3e404570aa1e5ccb240039891f4b83cd27940b947709")
     #expect(PersistedSchemaV1.stateFingerprint
         == "dev.yasyf.cc-vigil.state.b766bd33ef7db8fb7e18131aa0b4674e6df20863929728c38ef3e84a913915e3")
+    #expect(PersistedSchemaV1.eventFingerprint
+        == "dev.yasyf.cc-vigil.event.37caef1bfd1e1919e3b8481d20f7fbad6b4c490efbeff9b1ce94c5a50678c424")
+}
+
+@Test func eventLogRejectsEveryNonExactRecord() throws {
+    let valid = try String(
+        decoding: EventLog.encode(EventRecord(at: at, event: .wake)),
+        as: UTF8.self
+    )
+    let brokenRecords = [
+        "{\"at\":1767323047,\"event\":\"wake\"}",
+        valid.replacingOccurrences(of: PersistedSchemaV1.eventIdentity, with: "dev.yasyf.foreign"),
+        valid.replacingOccurrences(of: "\"schemaVersion\":1", with: "\"schemaVersion\":2"),
+        valid.replacingOccurrences(
+            of: PersistedSchemaV1.eventFingerprint,
+            with: PersistedSchemaV1.eventIdentity + ".stale"
+        ),
+        valid.replacingOccurrences(of: "\"at\":1767323047,", with: ""),
+        valid.replacingOccurrences(of: "\"event\":\"wake\"", with: "\"event\":\"wake\",\"extra\":true"),
+        valid.replacingOccurrences(of: "\"event\":\"wake\"", with: "\"event\":\"wake\",\"event\":\"wake\""),
+        valid.replacingOccurrences(of: "\"event\":\"wake\"", with: "\"event\":\"newer-event\""),
+        String(valid.dropLast()) + ",\"legacy\":true}",
+        valid + " {}",
+        "{",
+    ]
+    for broken in brokenRecords {
+        #expect(throws: (any Error).self) {
+            try EventLog.decodeRecords(fromJSONL: Data((broken + "\n").utf8))
+        }
+    }
+    #expect(throws: (any Error).self) {
+        try EventLog.decodeRecords(fromJSONL: Data((valid + "\n\n" + valid + "\n").utf8))
+    }
 }
 
 @Test func stateStoreRoundTripsExactV1Envelope() throws {

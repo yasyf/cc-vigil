@@ -49,44 +49,61 @@ extension EventRecord: Codable {
     public init(from decoder: Decoder) throws {
         let container = try decoder.container(keyedBy: CodingKeys.self)
         let at = try container.decode(Date.self, forKey: .at)
-        let event: VigilEvent = switch try container.decode(Kind.self, forKey: .event) {
+        let event: VigilEvent
+        switch try container.decode(Kind.self, forKey: .event) {
         case .daemonStarted:
-            try .daemonStarted(
+            try requireExactKeys(from: decoder, required: ["at", "dryRun", "event", "version"])
+            event = try .daemonStarted(
                 version: container.decode(String.self, forKey: .version),
                 dryRun: container.decode(Bool.self, forKey: .dryRun)
             )
         case .daemonStopped:
-            .daemonStopped
+            try requireExactKeys(from: decoder, required: ["at", "event"])
+            event = .daemonStopped
         case .blockEdge:
-            try .blockEdge(
+            try requireExactKeys(
+                from: decoder,
+                required: ["applied", "at", "blocked", "decision", "event", "holds"]
+            )
+            event = try .blockEdge(
                 blocked: container.decode(Bool.self, forKey: .blocked),
                 applied: container.decode(Bool.self, forKey: .applied),
                 decision: container.decode(BlockDecision.self, forKey: .decision),
-                holds: container.decodeIfPresent([Hold].self, forKey: .holds) ?? []
+                holds: container.decode([Hold].self, forKey: .holds)
             )
         case .cutoutLatched:
-            try .cutoutLatched(container.decode(CutoutKind.self, forKey: .kind))
+            try requireExactKeys(from: decoder, required: ["at", "event", "kind"])
+            event = try .cutoutLatched(container.decode(CutoutKind.self, forKey: .kind))
         case .cutoutCleared:
-            try .cutoutCleared(container.decode(CutoutKind.self, forKey: .kind))
+            try requireExactKeys(from: decoder, required: ["at", "event", "kind"])
+            event = try .cutoutCleared(container.decode(CutoutKind.self, forKey: .kind))
         case .lidChanged:
-            try .lidChanged(closed: container.decode(Bool.self, forKey: .closed))
+            try requireExactKeys(from: decoder, required: ["at", "closed", "event"])
+            event = try .lidChanged(closed: container.decode(Bool.self, forKey: .closed))
         case .holdAdded:
-            try .holdAdded(container.decode(Hold.self, forKey: .hold))
+            try requireExactKeys(from: decoder, required: ["at", "event", "hold"])
+            event = try .holdAdded(container.decode(Hold.self, forKey: .hold))
         case .holdReleased:
-            try .holdReleased(key: container.decode(String.self, forKey: .key))
+            try requireExactKeys(from: decoder, required: ["at", "event", "key"])
+            event = try .holdReleased(key: container.decode(String.self, forKey: .key))
         case .holdsExpired:
-            try .holdsExpired(keys: container.decode([String].self, forKey: .keys))
+            try requireExactKeys(from: decoder, required: ["at", "event", "keys"])
+            event = try .holdsExpired(keys: container.decode([String].self, forKey: .keys))
         case .probeFailed:
-            try .probeFailed(
+            try requireExactKeys(from: decoder, required: ["at", "event", "message", "path"])
+            event = try .probeFailed(
                 path: container.decode(String.self, forKey: .path),
                 message: container.decode(String.self, forKey: .message)
             )
         case .paused:
-            try .paused(until: container.decode(Date.self, forKey: .until))
+            try requireExactKeys(from: decoder, required: ["at", "event", "until"])
+            event = try .paused(until: container.decode(Date.self, forKey: .until))
         case .resumed:
-            .resumed
+            try requireExactKeys(from: decoder, required: ["at", "event"])
+            event = .resumed
         case .wake:
-            .wake
+            try requireExactKeys(from: decoder, required: ["at", "event"])
+            event = .wake
         }
         self.init(at: at, event: event)
     }

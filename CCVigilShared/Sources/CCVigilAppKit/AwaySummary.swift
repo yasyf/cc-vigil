@@ -1,4 +1,5 @@
 import CCVigilCLIKit
+import CCVigilRuntime
 import CCVigilShared
 import Foundation
 
@@ -27,18 +28,8 @@ public struct AwaySummary: Equatable, Sendable {
 }
 
 public enum AwayDigest {
-    public static func decodeRecords(fromJSONL data: Data) -> (records: [EventRecord], skippedLines: Int) {
-        var records: [EventRecord] = []
-        var skipped = 0
-        for line in data.split(separator: 0x0A) where !line.isEmpty {
-            do {
-                try records.append(WireCodec.decodePayload(EventRecord.self, from: Data(line)))
-            } catch {
-                // A record written by a newer daemon must not break the menu.
-                skipped += 1
-            }
-        }
-        return (records, skipped)
+    public static func decodeRecords(fromJSONL data: Data) throws -> [EventRecord] {
+        try EventLog.decodeRecords(fromJSONL: data)
     }
 
     public static func summarize(records: [EventRecord], since: Date, now: Date) -> AwaySummary {

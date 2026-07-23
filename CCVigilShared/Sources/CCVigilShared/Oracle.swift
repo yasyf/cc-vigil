@@ -69,6 +69,13 @@ public struct ActiveSession: Codable, Equatable, Sendable {
         self.path = path
         self.reasons = reasons
     }
+
+    public init(from decoder: Decoder) throws {
+        try requireExactKeys(from: decoder, required: ["path", "reasons"])
+        let container = try decoder.container(keyedBy: CodingKeys.self)
+        path = try container.decode(String.self, forKey: .path)
+        reasons = try container.decode([ActivityReason].self, forKey: .reasons)
+    }
 }
 
 public struct SessionDiscount: Codable, Equatable, Sendable {
@@ -78,6 +85,13 @@ public struct SessionDiscount: Codable, Equatable, Sendable {
     public init(path: String, reason: DiscountReason) {
         self.path = path
         self.reason = reason
+    }
+
+    public init(from decoder: Decoder) throws {
+        try requireExactKeys(from: decoder, required: ["path", "reason"])
+        let container = try decoder.container(keyedBy: CodingKeys.self)
+        path = try container.decode(String.self, forKey: .path)
+        reason = try container.decode(DiscountReason.self, forKey: .reason)
     }
 }
 
@@ -90,6 +104,14 @@ public struct BlockDecision: Codable, Equatable, Sendable {
         self.shouldBlock = shouldBlock
         self.activeSessions = activeSessions
         self.discounts = discounts
+    }
+
+    public init(from decoder: Decoder) throws {
+        try requireExactKeys(from: decoder, required: ["activeSessions", "discounts", "shouldBlock"])
+        let container = try decoder.container(keyedBy: CodingKeys.self)
+        shouldBlock = try container.decode(Bool.self, forKey: .shouldBlock)
+        activeSessions = try container.decode([ActiveSession].self, forKey: .activeSessions)
+        discounts = try container.decode([SessionDiscount].self, forKey: .discounts)
     }
 }
 
