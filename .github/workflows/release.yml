@@ -124,7 +124,7 @@ jobs:
 
       - name: Notarize, staple, zip CCVigil.app
         id: app
-        uses: yasyf/homebrew-tap/.github/actions/sign-notarize-app@v1
+        uses: yasyf/homebrew-tap/.github/actions/sign-notarize-app@v2
         with:
           app: build/Build/Products/Release/CCVigil.app
           name: cc-vigil
