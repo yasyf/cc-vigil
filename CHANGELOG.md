@@ -6,6 +6,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.7.0] - 2026-07-23
+
+### Changed
+
+- Pin daemonkit 0.9.0 for the exact fleet-wide runtime hard cut.
+- Persisted JSONL events and app state now use exact v1 identities and closed
+  schemas; legacy UserDefaults keys and non-v1 records have no runtime reader or importer.
+
 ## [0.6.0] - 2026-07-23
 
 ### Changed
