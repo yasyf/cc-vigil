@@ -159,7 +159,7 @@ private actor CLIDaemonSession {
         state = .idle
         switch previous {
         case let .ready(client):
-            await client.abort()
+            client.abort()
         case let .connecting(_, task):
             task.cancel()
         case .idle:
