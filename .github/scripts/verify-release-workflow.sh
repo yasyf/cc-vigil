@@ -15,6 +15,7 @@ test "$(grep -Ec "uses: yasyf/homebrew-tap/.+@${action_pin}$" "$workflow")" = 4
 test "$(grep -Ec "actions/stage-draft-release@${stage_pin}$" "$workflow")" = 1
 test "$(grep -Ec "actions/publish-draft-release@${draft_pin}$" "$workflow")" = 1
 test "$(grep -Ec "actions/publish@${tap_pin}$" "$workflow")" = 1
+test "$(grep -Fxc "          release-id: \${{ steps.draft.outputs['release-id'] }}" "$workflow")" = 1
 if grep -Eq 'softprops/action-gh-release|attach-to-release' "$workflow"; then
   echo "signing actions must not publish releases" >&2
   exit 1
