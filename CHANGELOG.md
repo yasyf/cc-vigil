@@ -10,6 +10,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Changed
 
+- Pin daemonkit 0.15.0 for the final typed runtime, transport, and process-settlement contract.
 - The daemon and CLI now use daemonkit's typed Swift session-service runtime
   and generation-aware `ServiceSocketClient`. Daemonkit owns listener
   lifecycle, receipt/readiness controls, authenticated successor following,
