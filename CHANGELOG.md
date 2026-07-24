@@ -6,6 +6,23 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.9.0] - 2026-07-23
+
+### Changed
+
+- The daemon and CLI now use daemonkit's typed Swift session-service runtime
+  and generation-aware `ServiceSocketClient`. Daemonkit owns listener
+  lifecycle, receipt/readiness controls, authenticated successor following,
+  bounded transport resources, cancellation, drain, and settlement.
+- CLI sessions bind the exact `dev.yasyf.cc-vigil.cli.v1` peer role and reject
+  mismatched wire builds before product dispatch.
+
+### Removed
+
+- cc-vigil no longer constructs raw daemonkit socket servers, requests,
+  responses, or its own connection lifecycle. There is no compatibility path
+  for the deleted transport surface.
+
 ## [0.8.0] - 2026-07-23
 
 ### Changed
@@ -347,7 +364,8 @@ Claude Code shipped as a signed and notarized menu-bar app.
   installer state machine, symlinker, away digest) lives in the new
   CCVigilAppKit library under `swift test`.
 
-[Unreleased]: https://github.com/yasyf/cc-vigil/compare/v0.8.0...HEAD
+[Unreleased]: https://github.com/yasyf/cc-vigil/compare/v0.9.0...HEAD
+[0.9.0]: https://github.com/yasyf/cc-vigil/compare/v0.8.0...v0.9.0
 [0.8.0]: https://github.com/yasyf/cc-vigil/compare/v0.7.0...v0.8.0
 [0.7.0]: https://github.com/yasyf/cc-vigil/compare/v0.6.0...v0.7.0
 [0.6.0]: https://github.com/yasyf/cc-vigil/compare/v0.5.0...v0.6.0
