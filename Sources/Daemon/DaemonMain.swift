@@ -219,7 +219,11 @@ enum DaemonMain {
             appServer.start()
             services.append(appServer)
         }
-        services.append(contentsOf: installTerminationHandlers(core: core, pusher: pusher))
+        services.append(contentsOf: installTerminationHandlers(
+            core: core,
+            pusher: pusher,
+            socketServer: socketServer
+        ))
         return services
     }
 
@@ -227,7 +231,8 @@ enum DaemonMain {
     /// daemon on logout/unload and the block must never outlive it.
     private static func installTerminationHandlers(
         core: DaemonCore,
-        pusher: any BlockPushing
+        pusher: any BlockPushing,
+        socketServer: CLISocketServer
     ) -> [DispatchSourceSignal] {
         let queue = DispatchQueue(label: "dev.yasyf.cc-vigil.signals")
         return [SIGTERM, SIGINT].map { signalNumber in
@@ -236,7 +241,9 @@ enum DaemonMain {
             source.setEventHandler {
                 let done = DispatchSemaphore(value: 0)
                 Task {
-                    _ = await pusher.push(blocked: false)
+                    async let socketShutdown: Void = socketServer.stop()
+                    async let clear = pusher.push(blocked: false)
+                    _ = await (socketShutdown, clear)
                     await core.recordStopped()
                     done.signal()
                 }

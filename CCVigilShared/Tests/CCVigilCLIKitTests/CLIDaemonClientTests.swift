@@ -86,6 +86,27 @@ struct CLIDaemonClientTests {
         }
     }
 
+    @Test func reconnectsAfterProductionServerReplacement() async throws {
+        let dir = try ShortTempDir(prefix: "sock")
+        defer { dir.tearDown() }
+        let path = dir.socketPath("s.sock")
+        let first = try CLISocketServer(socketPath: path, runtimeBuild: "first") { _ in .ok }
+        try await first.start()
+
+        try await withCLIDaemonClient(path: path, timeoutSeconds: 2) { client in
+            #expect(try await client.roundTrip(.ping) == .ok)
+            await first.stop()
+
+            let replacement = try CLISocketServer(socketPath: path, runtimeBuild: "second") { request in
+                request == .status ? .status(sampleReport) : .ok
+            }
+            try await replacement.start()
+            defer { Task { await replacement.stop() } }
+
+            #expect(try await client.roundTrip(.status) == .status(sampleReport))
+        }
+    }
+
     @Test func callerCancellationDoesNotPoisonTheSession() async throws {
         let dir = try ShortTempDir(prefix: "sock")
         defer { dir.tearDown() }
