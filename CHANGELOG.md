@@ -6,6 +6,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.12.0] - 2026-07-24
+
+### Changed
+
+- Pin daemonkit 0.17.4 for settled server-drain acknowledgements and exact
+  session teardown.
+
 ## [0.11.0] - 2026-07-24
 
 ### Changed
@@ -379,7 +386,8 @@ Claude Code shipped as a signed and notarized menu-bar app.
   installer state machine, symlinker, away digest) lives in the new
   CCVigilAppKit library under `swift test`.
 
-[Unreleased]: https://github.com/yasyf/cc-vigil/compare/v0.11.0...HEAD
+[Unreleased]: https://github.com/yasyf/cc-vigil/compare/v0.12.0...HEAD
+[0.12.0]: https://github.com/yasyf/cc-vigil/compare/v0.11.0...v0.12.0
 [0.11.0]: https://github.com/yasyf/cc-vigil/compare/v0.10.0...v0.11.0
 [0.10.0]: https://github.com/yasyf/cc-vigil/compare/v0.9.0...v0.10.0
 [0.9.0]: https://github.com/yasyf/cc-vigil/compare/v0.8.0...v0.9.0
