@@ -175,19 +175,6 @@ jobs:
           spctl --assess --type execute --verbose=4 "$app"
           "$app/Contents/Helpers/cc-vigil" --help | grep -Fq cc-vigil
 
-      # Prerelease tags (v0.1.0-rc.1) publish assets but never touch the tap. The
-      # cask lives in the shared external tap yasyf/homebrew-tap, so
-      # `brew install yasyf/tap/cc-vigil` resolves without a bespoke tap URL;
-      # release assets still come from THIS repo's GitHub Releases.
-      - name: Render the cask
-        if: ${{ !contains(github.ref_name, '-') }}
-        uses: yasyf/homebrew-tap/.github/actions/render-formula@19c3d5013032ad9c88f9a8f1170d1f366c19b8d9
-        with:
-          template: .github/cask/cc-vigil.rb.tmpl
-          output: Casks/cc-vigil.rb
-          substitutions: |
-            __SHA_APP__=${{ steps.app.outputs.sha256 }}
-
       - name: Record the exact release asset manifest
         env:
           ZIP: ${{ steps.app.outputs.zip }}
@@ -241,11 +228,3 @@ jobs:
           manifest: ${{ runner.temp }}/cc-vigil-release-assets
           prerelease: ${{ contains(github.ref_name, '-') }}
           make-latest: ${{ !contains(github.ref_name, '-') }}
-
-      - name: Publish the cask to the tap
-        if: ${{ !contains(github.ref_name, '-') }}
-        uses: yasyf/homebrew-tap/.github/actions/publish@9ca67392d45d66b6ae01e262383c8f3138d56f5e
-        with:
-          token: ${{ secrets.HOMEBREW_TAP_TOKEN }}
-          dir: tap-staging
-          message: "cc-vigil ${{ github.ref_name }}"

@@ -49,6 +49,10 @@ jobs:
         run: |
           actionlint
           bash .github/scripts/verify-release-workflow.sh
+          python3 -m py_compile \
+            .github/scripts/prepare-public-tap.py \
+            .github/scripts/test-prepare-public-tap.py
+          python3 .github/scripts/test-prepare-public-tap.py
       - name: Generate the Xcode project
         run: xcodegen generate
       - name: Build (app + embedded daemon, helper, CLI; ad-hoc signed)

@@ -1,0 +1,56 @@
+name: Publish an existing cc-vigil release to the tap
+
+on:
+  workflow_dispatch:
+    inputs:
+      release-id:
+        description: Exact numeric ID of the existing public GitHub release
+        required: true
+        type: string
+      tag:
+        description: Exact stable v-prefixed SemVer release tag
+        required: true
+        type: string
+      tagged-source-sha:
+        description: Exact commit SHA reached by recursively peeling the tag
+        required: true
+        type: string
+      zip-sha256:
+        description: SHA-256 of the exact public CCVigil.app zip
+        required: true
+        type: string
+      sidecar-sha256:
+        description: SHA-256 of the exact public checksum sidecar
+        required: true
+        type: string
+
+permissions:
+  contents: read
+
+concurrency:
+  group: publish-cc-vigil-tap-${{ inputs.tag }}
+  cancel-in-progress: false
+
+jobs:
+  publish:
+    runs-on: macos-26
+    steps:
+      - uses: actions/checkout@v7
+
+      - name: Verify the exact public release and render the tagged cask
+        id: delivery
+        env:
+          GH_TOKEN: ${{ github.token }}
+          RELEASE_ID: ${{ inputs.release-id }}
+          RELEASE_TAG: ${{ inputs.tag }}
+          TAGGED_SOURCE_SHA: ${{ inputs.tagged-source-sha }}
+          ZIP_SHA256: ${{ inputs.zip-sha256 }}
+          SIDECAR_SHA256: ${{ inputs.sidecar-sha256 }}
+        run: python3 .github/scripts/prepare-public-tap.py
+
+      - name: Publish only the verified cask
+        uses: yasyf/homebrew-tap/.github/actions/publish@9ca67392d45d66b6ae01e262383c8f3138d56f5e
+        with:
+          token: ${{ secrets.HOMEBREW_TAP_TOKEN }}
+          dir: ${{ steps.delivery.outputs.staging-dir }}
+          message: ${{ steps.delivery.outputs.message }}
