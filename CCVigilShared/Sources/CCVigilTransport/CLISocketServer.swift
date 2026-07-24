@@ -9,60 +9,53 @@ public final class CLISocketServer: @unchecked Sendable {
     public static let maximumActiveRequests = 8
 
     private let socketPath: String
-    private let server: SocketServer
+    private let runtime: StaticSessionServiceRuntime<WireRequest, WireResponse>
 
     public init(
         socketPath: String,
+        runtimeBuild: String,
         handler: @escaping @Sendable (WireRequest) async -> WireResponse
-    ) {
+    ) throws {
         self.socketPath = socketPath
-        var configuration = SocketServer.Configuration()
-        configuration.maximumActiveRequests = Self.maximumActiveRequests
-        server = SocketServer(
+        runtime = try StaticSessionServiceRuntime(
             path: socketPath,
             wireBuild: WireProtocol.wireBuild,
-            configuration: configuration,
-            trust: .sameEffectiveUser
-        ) { request in
-            await Self.respond(to: request, handler: handler)
-        }
+            runtimeBuild: runtimeBuild,
+            role: WireProtocol.clientRole,
+            trust: .sameEffectiveUser,
+            configuration: SessionServiceConfiguration(
+                maximumFrameBytes: daemonKitDefaultMaximumFrameBytes,
+                maximumRequestBytes: 1024 * 1024,
+                maximumActiveRequests: Self.maximumActiveRequests,
+                maximumSessions: 16,
+                streamQueueDepth: 8,
+                maximumPendingWrites: 16,
+                handshakeTimeout: 5,
+                writeTimeout: 5
+            ),
+            handler: SessionServiceHandler(
+                operation: WireProtocol.operation,
+                tenant: "",
+                codec: SessionServiceCodec(
+                    decodeRequest: { try WireCodec.decodePayload(WireRequest.self, from: $0) },
+                    encodeResponse: { try WireCodec.encodePayload($0) }
+                ),
+                handle: handler
+            )
+        )
     }
 
     public func start() async throws {
-        try await server.start()
+        try await runtime.start(deadline: Date().addingTimeInterval(5))
         let path = socketPath
         cliSocketLog.info("CLI socket listening at \(path, privacy: .public)")
     }
 
     public func stop() async {
-        await server.stop()
-    }
-
-    private static func respond(
-        to request: SocketRequest,
-        handler: @escaping @Sendable (WireRequest) async -> WireResponse
-    ) async -> SocketResponse {
-        guard request.operation == WireProtocol.operation, request.tenant.isEmpty else {
-            return .terminal(SocketTerminal(
-                rejected: true,
-                reason: "cc-vigil: unsupported operation"
-            ))
-        }
-        let decoded: WireRequest
         do {
-            decoded = try WireCodec.decodePayload(WireRequest.self, from: request.payload)
+            try await runtime.shutdown(deadline: Date().addingTimeInterval(5))
         } catch {
-            return .terminal(SocketTerminal(
-                rejected: true,
-                reason: "cc-vigil: malformed request"
-            ))
-        }
-        let response = await handler(decoded)
-        do {
-            return try .terminal(SocketTerminal(payload: WireCodec.encodePayload(response)))
-        } catch {
-            cliSocketLog.error("response encode failed: \(String(describing: error), privacy: .public)")
-            return .terminal(SocketTerminal(error: "cc-vigil: response encode failed"))
+            cliSocketLog.error("CLI socket shutdown failed: \(String(describing: error), privacy: .public)")
         }
     }
 }

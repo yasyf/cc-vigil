@@ -25,7 +25,7 @@ struct CLIDaemonClientTests {
     @Test func roundTripsPing() async throws {
         let dir = try ShortTempDir(prefix: "sock")
         defer { dir.tearDown() }
-        let server = FakeSocketServer(path: dir.socketPath("s.sock"), reply: .respond(.ok))
+        let server = try FakeSocketServer(path: dir.socketPath("s.sock"), reply: .respond(.ok))
         try await server.withStarted { () async throws in
             try await withCLIDaemonClient(path: server.path, timeoutSeconds: 2) { client in
                 let first = try await client.roundTrip(.ping)
@@ -40,7 +40,7 @@ struct CLIDaemonClientTests {
     @Test func roundTripsStatusReport() async throws {
         let dir = try ShortTempDir(prefix: "sock")
         defer { dir.tearDown() }
-        let server = FakeSocketServer(path: dir.socketPath("s.sock"), reply: .respond(.status(sampleReport)))
+        let server = try FakeSocketServer(path: dir.socketPath("s.sock"), reply: .respond(.status(sampleReport)))
         try await server.withStarted { () async throws in
             try await withCLIDaemonClient(path: server.path, timeoutSeconds: 2) { client in
                 let response = try await client.roundTrip(.status)
@@ -53,7 +53,7 @@ struct CLIDaemonClientTests {
     @Test func coalescesConcurrentConnectionSetup() async throws {
         let dir = try ShortTempDir(prefix: "sock")
         defer { dir.tearDown() }
-        let server = FakeSocketServer(path: dir.socketPath("s.sock"), reply: .respond(.ok))
+        let server = try FakeSocketServer(path: dir.socketPath("s.sock"), reply: .respond(.ok))
         try await server.withStarted { () async throws in
             try await withCLIDaemonClient(path: server.path, timeoutSeconds: 2) { client in
                 async let first = client.roundTrip(.ping)
@@ -67,10 +67,29 @@ struct CLIDaemonClientTests {
         }
     }
 
+    @Test func reconnectsAfterRuntimeReplacement() async throws {
+        let dir = try ShortTempDir(prefix: "sock")
+        defer { dir.tearDown() }
+        let path = dir.socketPath("s.sock")
+        let first = try FakeSocketServer(path: path, reply: .respond(.ok))
+        try await first.start()
+
+        try await withCLIDaemonClient(path: path, timeoutSeconds: 2) { client in
+            #expect(try await client.roundTrip(.ping) == .ok)
+            await first.stop()
+
+            let replacement = try FakeSocketServer(path: path, reply: .respond(.status(sampleReport)))
+            try await replacement.start()
+            defer { Task { await replacement.stop() } }
+
+            #expect(try await client.roundTrip(.status) == .status(sampleReport))
+        }
+    }
+
     @Test func callerCancellationDoesNotPoisonTheSession() async throws {
         let dir = try ShortTempDir(prefix: "sock")
         defer { dir.tearDown() }
-        let server = FakeSocketServer(
+        let server = try FakeSocketServer(
             path: dir.socketPath("s.sock"),
             reply: .cancellableStatusThenRespond(.ok)
         )
@@ -92,7 +111,7 @@ struct CLIDaemonClientTests {
     @Test func deliversDaemonErrors() async throws {
         let dir = try ShortTempDir(prefix: "sock")
         defer { dir.tearDown() }
-        let server = FakeSocketServer(
+        let server = try FakeSocketServer(
             path: dir.socketPath("s.sock"),
             reply: .respond(.error(message: "no hold with key k"))
         )
@@ -126,7 +145,7 @@ struct CLIDaemonClientTests {
     @Test func timesOutOnSilentServer() async throws {
         let dir = try ShortTempDir(prefix: "sock")
         defer { dir.tearDown() }
-        let server = FakeSocketServer(path: dir.socketPath("s.sock"), reply: .silence)
+        let server = try FakeSocketServer(path: dir.socketPath("s.sock"), reply: .silence)
         try await server.withStarted { () async throws in
             try await withCLIDaemonClient(path: server.path, timeoutSeconds: 1) { client in
                 _ = await #expect(throws: DaemonClientError.timedOut) {
@@ -139,7 +158,7 @@ struct CLIDaemonClientTests {
     @Test func rejectsWireBuildMismatchBeforeDispatch() async throws {
         let dir = try ShortTempDir(prefix: "sock")
         defer { dir.tearDown() }
-        let server = FakeSocketServer(
+        let server = try FakeSocketServer(
             path: dir.socketPath("s.sock"),
             wireBuild: "cc-vigil.cli.v2",
             reply: .respond(.ok)
@@ -164,7 +183,7 @@ struct CLIDaemonClientTests {
         let dir = try ShortTempDir(prefix: "sock")
         defer { dir.tearDown() }
         let junk = Data(#"{"result":"bogus"}"#.utf8)
-        let server = FakeSocketServer(path: dir.socketPath("s.sock"), reply: .raw(junk))
+        let server = try FakeSocketServer(path: dir.socketPath("s.sock"), reply: .raw(junk))
         try await server.withStarted {
             try await withCLIDaemonClient(path: server.path, timeoutSeconds: 1) { client in
                 do {

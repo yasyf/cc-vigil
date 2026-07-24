@@ -44,7 +44,7 @@ public final class CLIDaemonClient: @unchecked Sendable {
 
     deinit {
         let session = session
-        Task { await session.abort() }
+        Task { await session.reset() }
     }
 
     public static func timeout(for request: WireRequest) -> Int {
@@ -55,30 +55,46 @@ public final class CLIDaemonClient: @unchecked Sendable {
     }
 
     public func roundTrip(_ request: WireRequest) async throws -> WireResponse {
-        let client: SocketClient
+        let requestTimeout = request == .clear
+            ? max(timeoutSeconds, Self.timeout(for: request))
+            : timeoutSeconds
+        let deadline = Date().addingTimeInterval(TimeInterval(requestTimeout))
         do {
-            client = try await session.current(path: path, wireBuild: WireProtocol.wireBuild)
-            let requestTimeout = request == .clear
-                ? max(timeoutSeconds, Self.timeout(for: request))
-                : timeoutSeconds
-            let terminal = try await client.call(
+            let client = try await session.current(path: path, wireBuild: WireProtocol.wireBuild)
+            let terminal = try await client.call(ServiceSocketCall(
                 operation: WireProtocol.operation,
                 payload: WireCodec.encodePayload(request),
-                deadline: Date().addingTimeInterval(TimeInterval(requestTimeout))
-            )
+                runtimeTarget: .anyAuthenticatedSuccessor,
+                deadline: deadline
+            ))
             return try decode(terminal)
         } catch let error as DaemonClientError {
             throw error
-        } catch let error as CancellationError {
-            throw error
+        } catch is CancellationError {
+            throw CancellationError()
+        } catch let error as ServiceSocketRejectionError {
+            throw DaemonClientError.rejected(error.reason)
+        } catch let error as SocketHandshakeRejectionError {
+            throw DaemonClientError.rejected(error.reason)
+        } catch let error as SocketWireBuildMismatchError {
+            throw DaemonClientError.rejected(error.description)
+        } catch ServiceSocketClientError.deadlineExceeded {
+            await session.reset()
+            guard FileManager.default.fileExists(atPath: path) else {
+                throw DaemonClientError.transport("daemon socket is unavailable")
+            }
+            throw DaemonClientError.timedOut
+        } catch is SocketCallDeadlineExceededError {
+            await session.reset()
+            throw DaemonClientError.timedOut
         } catch {
-            await session.abort()
+            await session.reset()
             throw DaemonClientError.transport(String(describing: error))
         }
     }
 
     public func close() async {
-        await session.close()
+        await session.reset()
     }
 
     private func decode(_ terminal: SocketTerminal) throws -> WireResponse {
@@ -103,91 +119,25 @@ public final class CLIDaemonClient: @unchecked Sendable {
 }
 
 private actor CLIDaemonSession {
-    private enum State {
-        case idle
-        case connecting(UUID, Task<SocketClient, Error>)
-        case ready(SocketClient)
-    }
+    private var client: ServiceSocketClient?
 
-    private var state = State.idle
-
-    func current(path: String, wireBuild: String) async throws -> SocketClient {
-        switch state {
-        case let .ready(client):
+    func current(path: String, wireBuild: String) throws -> ServiceSocketClient {
+        if let client {
             return client
-        case let .connecting(id, task):
-            return try await finishConnection(id: id, task: task)
-        case .idle:
-            let id = UUID()
-            let task = Task<SocketClient, Error> {
-                let opened = try await SocketClient(
-                    path: path,
-                    wireBuild: wireBuild,
-                    trust: .sameEffectiveUser
-                )
-                guard opened.peerWireBuild == wireBuild else {
-                    await opened.close()
-                    throw DaemonClientError.rejected(
-                        "wire build \(opened.peerWireBuild) does not match \(wireBuild)"
-                    )
-                }
-                return opened
-            }
-            state = .connecting(id, task)
-            return try await finishConnection(id: id, task: task)
         }
+        let client = try ServiceSocketClient(
+            path: path,
+            wireBuild: wireBuild,
+            role: WireProtocol.clientRole,
+            noProgressTimeout: TimeInterval(CLIDaemonClient.defaultTimeoutSeconds)
+        )
+        self.client = client
+        return client
     }
 
-    func close() async {
-        let previous = state
-        state = .idle
-        switch previous {
-        case let .ready(client):
-            await client.close()
-        case let .connecting(_, task):
-            task.cancel()
-            if case let .success(client) = await task.result {
-                await client.close()
-            }
-        case .idle:
-            break
-        }
-    }
-
-    func abort() async {
-        let previous = state
-        state = .idle
-        switch previous {
-        case let .ready(client):
-            client.abort()
-        case let .connecting(_, task):
-            task.cancel()
-        case .idle:
-            break
-        }
-    }
-
-    private func finishConnection(
-        id: UUID,
-        task: Task<SocketClient, Error>
-    ) async throws -> SocketClient {
-        do {
-            let opened = try await task.value
-            switch state {
-            case let .connecting(currentID, _) where currentID == id:
-                state = .ready(opened)
-                return opened
-            case let .ready(current) where current === opened:
-                return opened
-            default:
-                await opened.close()
-                throw DaemonClientError.transport("connection canceled")
-            }
-        } catch {
-            if case let .connecting(currentID, _) = state, currentID == id {
-                state = .idle
-            }
-            throw error
-        }
+    func reset() async {
+        let previous = client
+        client = nil
+        await previous?.close()
     }
 }

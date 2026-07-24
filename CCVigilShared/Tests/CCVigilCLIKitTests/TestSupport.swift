@@ -78,44 +78,56 @@ final class FakeSocketServer: @unchecked Sendable {
     private let reply: FakeReply
     private let recorded = OSAllocatedUnfairLock<[WireRequest]>(initialState: [])
     private let signal = FakeRequestSignal()
-    private let server: SocketServer
+    private let server: StaticSessionServiceRuntime<WireRequest, Data>
 
-    init(path: String, wireBuild: String = WireProtocol.wireBuild, reply: FakeReply) {
+    init(path: String, wireBuild: String = WireProtocol.wireBuild, reply: FakeReply) throws {
         self.path = path
         self.reply = reply
-        var configuration = SocketServer.Configuration()
-        configuration.maximumSessions = 1
-        server = SocketServer(
+        server = try StaticSessionServiceRuntime(
             path: path,
             wireBuild: wireBuild,
-            configuration: configuration,
-            trust: .sameEffectiveUser
-        ) { [recorded, signal] request in
-            guard request.operation == WireProtocol.operation,
-                  let decoded = try? WireCodec.decodePayload(WireRequest.self, from: request.payload)
-            else {
-                return .terminal(SocketTerminal(rejected: true, reason: "invalid test request"))
-            }
-            recorded.withLock { $0.append(decoded) }
-            await signal.record(decoded)
-            switch reply {
-            case let .respond(response):
-                return Self.terminal(response)
-            case let .delayedRespond(response, afterSeconds):
-                try? await Task.sleep(for: .seconds(afterSeconds))
-                return Self.terminal(response)
-            case let .cancellableStatusThenRespond(response):
-                if decoded == .status {
+            runtimeBuild: "cc-vigil-test.v1",
+            role: WireProtocol.clientRole,
+            trust: .sameEffectiveUser,
+            configuration: SessionServiceConfiguration(
+                maximumFrameBytes: daemonKitDefaultMaximumFrameBytes,
+                maximumRequestBytes: 1024 * 1024,
+                maximumActiveRequests: CLISocketServer.maximumActiveRequests,
+                maximumSessions: 1,
+                streamQueueDepth: 8,
+                maximumPendingWrites: 16,
+                handshakeTimeout: 2,
+                writeTimeout: 2
+            ),
+            handler: SessionServiceHandler(
+                operation: WireProtocol.operation,
+                tenant: "",
+                codec: SessionServiceCodec(
+                    decodeRequest: { try WireCodec.decodePayload(WireRequest.self, from: $0) },
+                    encodeResponse: { $0 }
+                )
+            ) { [recorded, signal] request in
+                recorded.withLock { $0.append(request) }
+                await signal.record(request)
+                switch reply {
+                case let .respond(response):
+                    return Self.payload(response)
+                case let .delayedRespond(response, afterSeconds):
+                    try? await Task.sleep(for: .seconds(afterSeconds))
+                    return Self.payload(response)
+                case let .cancellableStatusThenRespond(response):
+                    if request == .status {
+                        try? await Task.sleep(for: .seconds(60))
+                    }
+                    return Self.payload(response)
+                case let .raw(payload):
+                    return payload
+                case .silence:
                     try? await Task.sleep(for: .seconds(60))
+                    return Data(#"{"error":"wire: request canceled"}"#.utf8)
                 }
-                return Self.terminal(response)
-            case let .raw(payload):
-                return .terminal(SocketTerminal(payload: payload))
-            case .silence:
-                try? await Task.sleep(for: .seconds(60))
-                return .terminal(SocketTerminal(error: "wire: request canceled"))
             }
-        }
+        )
     }
 
     var requests: [WireRequest] {
@@ -127,7 +139,7 @@ final class FakeSocketServer: @unchecked Sendable {
     }
 
     func withStarted<Result>(_ body: () async throws -> Result) async throws -> Result {
-        try await server.start()
+        try await start()
         do {
             let result = try await body()
             await stop()
@@ -138,15 +150,15 @@ final class FakeSocketServer: @unchecked Sendable {
         }
     }
 
-    private func stop() async {
-        await server.stop()
+    func start() async throws {
+        try await server.start(deadline: Date().addingTimeInterval(2))
     }
 
-    private static func terminal(_ response: WireResponse) -> SocketResponse {
-        do {
-            return try .terminal(SocketTerminal(payload: WireCodec.encodePayload(response)))
-        } catch {
-            return .terminal(SocketTerminal(error: String(describing: error)))
-        }
+    func stop() async {
+        try? await server.shutdown(deadline: Date().addingTimeInterval(2))
+    }
+
+    private static func payload(_ response: WireResponse) -> Data {
+        (try? WireCodec.encodePayload(response)) ?? Data("null".utf8)
     }
 }

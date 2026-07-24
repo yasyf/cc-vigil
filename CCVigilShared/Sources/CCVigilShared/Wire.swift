@@ -2,6 +2,7 @@ import Foundation
 
 public enum WireProtocol {
     public static let wireBuild = "cc-vigil.cli.v1"
+    public static let clientRole = "dev.yasyf.cc-vigil.cli.v1"
     public static let operation = "cc-vigil.cli.call"
 }
 

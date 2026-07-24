@@ -18,7 +18,7 @@ import Testing
     // the default 5s client budget would abandon it, so the clear op rides the
     // wider ClearBudget.clientSeconds budget instead.
     let stall = Double(CLIDaemonClient.defaultTimeoutSeconds) + 1
-    let server = FakeSocketServer(
+    let server = try FakeSocketServer(
         path: dir.socketPath("s.sock"),
         reply: .delayedRespond(.ok, afterSeconds: stall)
     )

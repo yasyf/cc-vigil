@@ -65,6 +65,7 @@ enum DaemonMain {
         retained = await startServices(
             options: options,
             paths: startup.paths,
+            runtimeBuild: startup.version,
             config: startup.config,
             core: core,
             broadcaster: broadcaster,
@@ -141,15 +142,20 @@ enum DaemonMain {
     private static func startServices(
         options: DaemonOptions,
         paths: SupportPaths,
+        runtimeBuild: String,
         config: VigilConfig,
         core: DaemonCore,
         broadcaster: StatusBroadcaster?,
         pusher: any BlockPushing
     ) async -> [AnyObject] {
-        let socketServer = CLISocketServer(socketPath: paths.socketPath) { request in
-            await core.handle(request)
-        }
+        let socketServer: CLISocketServer
         do {
+            socketServer = try CLISocketServer(
+                socketPath: paths.socketPath,
+                runtimeBuild: runtimeBuild
+            ) { request in
+                await core.handle(request)
+            }
             try await socketServer.start()
         } catch {
             die("CLI socket failed to start at \(paths.socketPath): \(error)")
