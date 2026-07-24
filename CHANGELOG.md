@@ -6,6 +6,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.10.0] - 2026-07-23
+
+### Changed
+
+- Pin daemonkit 0.16.0 so spawned-session descriptor ownership transfers only
+  after direct-parent proof succeeds.
+
 ## [0.9.0] - 2026-07-23
 
 ### Changed
@@ -365,7 +372,8 @@ Claude Code shipped as a signed and notarized menu-bar app.
   installer state machine, symlinker, away digest) lives in the new
   CCVigilAppKit library under `swift test`.
 
-[Unreleased]: https://github.com/yasyf/cc-vigil/compare/v0.9.0...HEAD
+[Unreleased]: https://github.com/yasyf/cc-vigil/compare/v0.10.0...HEAD
+[0.10.0]: https://github.com/yasyf/cc-vigil/compare/v0.9.0...v0.10.0
 [0.9.0]: https://github.com/yasyf/cc-vigil/compare/v0.8.0...v0.9.0
 [0.8.0]: https://github.com/yasyf/cc-vigil/compare/v0.7.0...v0.8.0
 [0.7.0]: https://github.com/yasyf/cc-vigil/compare/v0.6.0...v0.7.0
