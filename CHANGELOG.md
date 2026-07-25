@@ -6,6 +6,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.13.1] - 2026-07-24
+
+### Changed
+
+- Pin daemonkit 0.19.1 so a terminal verifier worker tears down the daemon
+  runtime instead of leaving its process alive while rejecting every peer.
+
 ## [0.13.0] - 2026-07-24
 
 ### Changed
@@ -393,7 +400,8 @@ Claude Code shipped as a signed and notarized menu-bar app.
   installer state machine, symlinker, away digest) lives in the new
   CCVigilAppKit library under `swift test`.
 
-[Unreleased]: https://github.com/yasyf/cc-vigil/compare/v0.13.0...HEAD
+[Unreleased]: https://github.com/yasyf/cc-vigil/compare/v0.13.1...HEAD
+[0.13.1]: https://github.com/yasyf/cc-vigil/compare/v0.13.0...v0.13.1
 [0.13.0]: https://github.com/yasyf/cc-vigil/compare/v0.12.0...v0.13.0
 [0.12.0]: https://github.com/yasyf/cc-vigil/compare/v0.11.0...v0.12.0
 [0.11.0]: https://github.com/yasyf/cc-vigil/compare/v0.10.0...v0.11.0
