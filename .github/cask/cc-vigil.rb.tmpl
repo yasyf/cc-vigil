@@ -28,12 +28,10 @@ cask "cc-vigil" do
 
   app "CCVigil.app"
 
-  postflight do
+  postflight_steps do
     # Strip Homebrew's download quarantine so the first launch is silent
     # (the app is notarized + stapled, so Gatekeeper still validates it).
-    system_command "/usr/bin/xattr",
-                   args: ["-dr", "com.apple.quarantine", "#{appdir}/CCVigil.app"],
-                   must_succeed: false
+    run "/usr/bin/xattr", args: ["-dr", "com.apple.quarantine", "{{appdir}}/CCVigil.app"], must_succeed: false
   end
 
   uninstall quit: "dev.yasyf.cc-vigil"
