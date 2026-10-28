@@ -9,8 +9,7 @@ public enum ProcArgsParser {
         let argc = Int(
             UInt32(bytes[0]) | UInt32(bytes[1]) << 8 | UInt32(bytes[2]) << 16 | UInt32(bytes[3]) << 24
         )
-        guard argc >= 1, argc <= maxArgc else { return nil }
-        guard let execPathEnd = bytes[4...].firstIndex(of: 0) else { return nil }
+        guard argc >= 1, argc <= maxArgc, let execPathEnd = bytes[4...].firstIndex(of: 0) else { return nil }
         var index = execPathEnd
         while index < bytes.count, bytes[index] == 0 {
             index += 1
