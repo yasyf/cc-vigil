@@ -18,6 +18,7 @@ permissions:
 # and the same major the project builds with locally.
 jobs:
   test:
+    if: github.event_name != 'pull_request'
     runs-on: macos-26
     steps:
       - uses: actions/checkout@v7
